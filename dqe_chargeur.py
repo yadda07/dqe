@@ -31,7 +31,7 @@ except ImportError as e:
 
 class DqeChargeurPlugin:
     """
-    Plugin DQE Chargeur CORRIGÉ
+    Plugin DQE Chargeur 
     
     Fonctionnalités :
     - Initialisation robuste du système DQE
