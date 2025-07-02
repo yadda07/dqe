@@ -537,11 +537,30 @@ class DQEProTab(QWidget):
                 QMessageBox.warning(self, "Validation DQE", "Veuillez sélectionner un SRO")
                 return
             
-            if not self.layer_group or not self.layers_loaded:
-                QMessageBox.warning(self, "Validation DQE", "Aucune couche DQE PRO chargée à valider")
+            # Récupérer les couches directement depuis le projet QGIS au lieu d'utiliser les références stockées
+            if not self.layer_group:
+                QMessageBox.warning(self, "Validation DQE", "Aucun groupe de couches DQE PRO trouvé")
                 return
             
-            print(f"DEBUG: Validation DQE PRO - {len(self.layers_loaded)} couches à traiter")
+            # Récupérer toutes les couches du groupe DQE PRO depuis le projet QGIS
+            project_layers = []
+            def collect_layers(group):
+                """Collecte récursivement toutes les couches d'un groupe"""
+                for child in group.children():
+                    if hasattr(child, 'layer'):
+                        layer = child.layer()
+                        if layer and layer.isValid():
+                            project_layers.append(layer)
+                    elif hasattr(child, 'children'):
+                        collect_layers(child)
+            
+            collect_layers(self.layer_group)
+            
+            if not project_layers:
+                QMessageBox.warning(self, "Validation DQE", "Aucune couche DQE PRO valide trouvée dans le projet")
+                return
+            
+            print(f"DEBUG: Validation DQE PRO - {len(project_layers)} couches trouvées dans le projet")
             
             # Détermination du code projet selon le type sélectionné
             type_data = self.type_combo.currentData()
@@ -554,17 +573,25 @@ class DQEProTab(QWidget):
             user_name = _db_manager._config.user if _db_manager._config else "unknown"
             
             success_count = 0
-            total_layers = len(self.layers_loaded)
+            total_layers = len(project_layers)
             
             # Sauvegarde de chaque couche dans dqe.dqejson
-            for i, layer in enumerate(self.layers_loaded):
-                print(f"DEBUG: Couche {i+1}/{total_layers}: {layer.name() if hasattr(layer, 'name') else 'SANS NOM'}")
+            for i, layer in enumerate(project_layers):
+                print(f"DEBUG: Couche {i+1}/{total_layers}: {layer.name() if layer else 'SANS NOM'}")
                 
-                if not layer.isValid():
+                # Double vérification de la validité de la couche
+                if not layer or not layer.isValid():
                     print(f"DEBUG: - Couche INVALIDE, ignorée")
                     continue
                 
-                print(f"DEBUG: - Couche valide, {layer.featureCount()} features")
+                # Vérifier que la couche n'a pas été supprimée
+                try:
+                    layer_name = layer.name()
+                    feature_count = layer.featureCount()
+                    print(f"DEBUG: - Couche valide: {layer_name}, {feature_count} features")
+                except RuntimeError as e:
+                    print(f"DEBUG: - Couche supprimée, ignorée: {str(e)}")
+                    continue
                 
                 try:
                     # Transaction séparée pour chaque couche
@@ -580,26 +607,31 @@ class DQEProTab(QWidget):
                             VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """
                         
-                        print(f"DEBUG: - Insertion SQL pour {layer.name()}")
+                        print(f"DEBUG: - Insertion SQL pour {layer_name}")
                         cursor.execute(query, (
                             sro,
                             f"DQE_PRO_{sro}",
                             projet_code,
-                            layer.name(),
+                            layer_name,
                             json.dumps(layer_data),
                             user_name,
                             "dqe"
                         ))
                         
                         success_count += 1
-                        print(f"DEBUG: - Couche {layer.name()} sauvegardée avec succès")
+                        print(f"DEBUG: - Couche {layer_name} sauvegardée avec succès")
                         
                 except Exception as e:
-                    print(f"DEBUG: - ERREUR pour {layer.name()}: {str(e)}")
+                    layer_name_safe = "UNKNOWN"
+                    try:
+                        layer_name_safe = layer.name() if layer else "UNKNOWN"
+                    except:
+                        pass
+                    print(f"DEBUG: - ERREUR pour {layer_name_safe}: {str(e)}")
                     import traceback
                     print(f"DEBUG: - Traceback: {traceback.format_exc()}")
                     if _logger:
-                        _logger.error(f"Erreur validation couche {layer.name()}: {str(e)}")
+                        _logger.error(f"Erreur validation couche {layer_name_safe}: {str(e)}")
             
             print(f"DEBUG: Validation terminée: {success_count}/{total_layers} couches sauvegardées")
             
@@ -625,26 +657,74 @@ class DQEProTab(QWidget):
         """Extrait les données d'une couche QGIS pour sauvegarde JSON"""
         features_data = []
         
-        for feature in layer.getFeatures():
-            feature_dict = {
-                'geometry': feature.geometry().asWkt() if feature.geometry() else None,
-                'attributes': {}
+        try:
+            # Vérifier que la couche est toujours valide
+            if not layer or not layer.isValid():
+                print(f"WARNING: Couche invalide lors de l'extraction des données")
+                return {
+                    'type': 'FeatureCollection',
+                    'features': [],
+                    'crs': None
+                }
+            
+            # Vérifier l'accès aux méthodes de la couche
+            layer_name = layer.name()  # Test d'accès
+            layer_fields = layer.fields()  # Test d'accès
+            
+            for feature in layer.getFeatures():
+                try:
+                    feature_dict = {
+                        'geometry': feature.geometry().asWkt() if feature.geometry() else None,
+                        'attributes': {}
+                    }
+                    
+                    # Récupération des attributs
+                    for field in layer_fields:
+                        field_name = field.name()
+                        try:
+                            value = feature[field_name]
+                            # Conversion des valeurs pour JSON
+                            if isinstance(value, (int, float, str, bool)) or value is None:
+                                feature_dict['attributes'][field_name] = value
+                            else:
+                                feature_dict['attributes'][field_name] = str(value)
+                        except Exception as e:
+                            print(f"WARNING: Erreur lecture attribut {field_name}: {str(e)}")
+                            feature_dict['attributes'][field_name] = None
+                    
+                    features_data.append(feature_dict)
+                    
+                except Exception as e:
+                    print(f"WARNING: Erreur lecture feature: {str(e)}")
+                    continue
+            
+            # Récupération du CRS
+            crs_authid = None
+            try:
+                if layer.crs() and layer.crs().isValid():
+                    crs_authid = layer.crs().authid()
+            except Exception as e:
+                print(f"WARNING: Erreur lecture CRS: {str(e)}")
+            
+            return {
+                'type': 'FeatureCollection',
+                'features': features_data,
+                'crs': crs_authid
             }
             
-            # Récupération des attributs
-            for field in layer.fields():
-                field_name = field.name()
-                value = feature[field_name]
-                # Conversion des valeurs pour JSON
-                if isinstance(value, (int, float, str, bool)) or value is None:
-                    feature_dict['attributes'][field_name] = value
-                else:
-                    feature_dict['attributes'][field_name] = str(value)
-            
-            features_data.append(feature_dict)
-        
-        return {
-            'type': 'FeatureCollection',
-            'features': features_data,
-            'crs': layer.crs().authid() if layer.crs().isValid() else None
-        }
+        except RuntimeError as e:
+            print(f"ERROR: Couche supprimée lors de l'extraction: {str(e)}")
+            return {
+                'type': 'FeatureCollection',
+                'features': [],
+                'crs': None
+            }
+        except Exception as e:
+            print(f"ERROR: Erreur extraction données couche: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return {
+                'type': 'FeatureCollection',
+                'features': [],
+                'crs': None
+            }
