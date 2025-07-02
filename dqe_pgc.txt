@@ -1,0 +1,36 @@
+"Désignation";"Unité";"Quantité";"ids"
+"Nom GC : Troncon9-Sout-TRA";NULL;NULL;NULL
+"";"";NULL;NULL
+"";"";NULL;NULL
+"Désignation";"Unité";NULL;NULL
+"Armoire de rue  - (hors fourniture)";NULL;NULL;NULL
+"Terrassement, Pose d'un socle préfa en Béton, bétonnage et Pose d'une armoire de rue (y-compris transport, mise à la terre, réfection a l'identique)";"U";"0";NULL
+"GC - TDR + RAD (hors fourniture tube PEHD ou PVC et chambres)";NULL;NULL;NULL
+"Tranchée traditionnelle sous chaussée";"ml";"16.32";"7543"
+"Tranchée traditionnelle sous trottoir";"ml";"0";NULL
+"Tranchée traditionnelle sous accotement";"ml";"49.71";"7539,7541,7542"
+"Tranchée traditionnelle sous Espace Vert ou chemin empierré";"ml";"0";NULL
+"Micro tranchée sous chaussée";"ml";"97.48";"7553,7544,8355,7555,7547"
+"Micro tranchée sous rive";"ml";"2085.98";"7546,7548,7540,7550,7551,8354,7554,7545,7549,7552"
+"Tranchée mécanisée ou SOC sous accotement";"ml";"0";NULL
+"Tranchée mécanisée sous Espace Vert ou chemin empierré";"ml";"0";NULL
+"Forage dirigé ou fonçage";"ml";"0";NULL
+"Encorbellement";"ml";"0";NULL
+"Pose de chambre L1T";"U";"0";NULL
+"Pose de chambre L2T";"U";"1";"2047"
+"pose de chambre L3T";"U";"4";"2049,2050,2051,2440"
+"pose de chambre L4T";"U";"0";NULL
+"pose de chambre L5T";"U";"0";NULL
+"pose de chambre L2C";"U";"0";NULL
+"pose de chambre L3C";"U";"1";"1526"
+"pose de chambre K2C";"U";"0";NULL
+"Pose de poteaux";NULL;NULL;NULL
+"pose poteau RAUV";"U";"0";NULL
+"";"";NULL;NULL
+"";"";NULL;NULL
+"Fourniture des Alvéoles";NULL;NULL;NULL
+"PVC 45 (2 fois les longueur par tranchée)";"ml";"84.14";"8355,7553,7549"
+"PVC 45 (3 fois les longueur par tranchée)";"ml";"58.62";"7555"
+"PVC 60 (2 fois les longueur par tranchée)";"ml";"6.12";"7552"
+"PVC 60 (4 fois les longueur par tranchée)";"ml";"31.16";"7539"
+"4 PEHD 33/40";"ml";"2177.03";"8354,7547,7543,7541,7554,7545,7542,7546,7548,7540,7550,7551,7544"

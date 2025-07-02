@@ -1,0 +1,826 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>HACHANA Mohamed</Author>
+  <LastAuthor>ADDA Youcef</LastAuthor>
+  <Created>2025-02-24T13:35:36Z</Created>
+  <LastSaved>2025-06-25T16:00:44Z</LastSaved>
+  <Version>16.00</Version>
+ </DocumentProperties>
+ <OfficeDocumentSettings xmlns="urn:schemas-microsoft-com:office:office">
+  <AllowPNG/>
+ </OfficeDocumentSettings>
+ <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
+  <WindowHeight>9960</WindowHeight>
+  <WindowWidth>17280</WindowWidth>
+  <WindowTopX>3312</WindowTopX>
+  <WindowTopY>1872</WindowTopY>
+  <ProtectStructure>False</ProtectStructure>
+  <ProtectWindows>False</ProtectWindows>
+ </ExcelWorkbook>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+   <Borders/>
+   <Font ss:FontName="Aptos Narrow" x:Family="Swiss" ss:Size="11"
+    ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="m2510490806080">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Size="16"
+    ss:Color="#FF8000" ss:Bold="1"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s16">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Italic="1"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s17">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Color="#000000"
+    ss:Italic="1"/>
+  </Style>
+  <Style ss:ID="s18">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s19">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+  </Style>
+  <Style ss:ID="s20">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Size="16"
+    ss:Color="#000000" ss:Bold="1" ss:Italic="1"/>
+   <Interior ss:Color="#4D93D9" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s21">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Size="11"
+    ss:Color="#000000"/>
+  </Style>
+  <Style ss:ID="s22">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Color="#000000"
+    ss:Bold="1" ss:Italic="1"/>
+  </Style>
+  <Style ss:ID="s23">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="s24">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Size="16"
+    ss:Color="#000000" ss:Bold="1" ss:Italic="1"/>
+   <Interior ss:Color="#4D93D9" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s25">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Size="11"
+    ss:Color="#000000"/>
+  </Style>
+  <Style ss:ID="s26">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Century Gothic" x:Family="Swiss" ss:Size="11"
+    ss:Color="#000000" ss:Bold="1" ss:Italic="1"/>
+  </Style>
+  <Style ss:ID="s27">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="s28">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Aptos Narrow" x:Family="Swiss" ss:Size="16"
+    ss:Color="#000000" ss:Bold="1"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="DQE PGC">
+  <Table ss:ExpandedColumnCount="3" ss:ExpandedRowCount="195" x:FullColumns="1"
+   x:FullRows="1" ss:DefaultColumnWidth="62.400000000000006"
+   ss:DefaultRowHeight="14.4">
+   <Column ss:AutoFitWidth="0" ss:Width="327.59999999999997"/>
+   <Column ss:StyleID="s23" ss:Width="51"/>
+   <Column ss:StyleID="s23" ss:Width="79.2"/>
+   <Row ss:AutoFitHeight="0" ss:Height="40.799999999999997">
+    <Cell ss:MergeAcross="2" ss:StyleID="m2510490806080"><Data ss:Type="String">Nom GC : Troncon1-Sout-TRA;Troncon2-Sout-TRA;Troncon3-Sout-TRA</Data></Cell>
+   </Row>
+   <Row ss:Index="4" ss:Height="20.399999999999999">
+    <Cell ss:StyleID="s24"><Data ss:Type="String">Désignation</Data></Cell>
+    <Cell ss:StyleID="s20"><Data ss:Type="String">Unité</Data></Cell>
+    <Cell ss:StyleID="s20"><Data ss:Type="String">Quantité</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s22"><Data ss:Type="String"> Armoire de rue  - (hors fourniture)</Data></Cell>
+    <Cell ss:StyleID="s16"/>
+    <Cell ss:StyleID="s18"/>
+   </Row>
+   <Row ss:Height="41.4">
+    <Cell ss:StyleID="s25"><Data ss:Type="String">Terrassement, Pose d'un socle préfa en Béton, bétonnage et Pose d'une armoire de rue (y-compris transport, mise à la terre, réfection a l'identique)</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s21"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s22"><Data ss:Type="String"> GC - TDR + RAD (hors fourniture tube PEHD ou PVC et chambres)</Data></Cell>
+    <Cell ss:StyleID="s16"/>
+    <Cell ss:StyleID="s19"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Tranchée traditionnelle sous chaussée</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Tranchée traditionnelle sous trottoir</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Tranchée traditionnelle sous accotement</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Tranchée traditionnelle sous Espace Vert ou chemin empierré</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Micro tranchée sous chaussée</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Micro tranchée sous rive</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Tranchée mécanisée ou SOC sous accotement</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Tranchée mécanisée sous Espace Vert ou chemin empierré</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Forage dirigé ou fonçage</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s19"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Encorbellement</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">ml</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Pose de chambre L1T</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">Pose de chambre L2T</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">pose de chambre L3T</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">pose de chambre L4T</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">pose de chambre L5T</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">pose de chambre L2C</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">pose de chambre L3C</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s25"><Data ss:Type="String">pose de chambre K2C</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s21"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s26"><Data ss:Type="String"> Pose de poteaux</Data></Cell>
+    <Cell ss:StyleID="s16"/>
+    <Cell ss:StyleID="s18"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s17"><Data ss:Type="String">pose poteau RAUV</Data></Cell>
+    <Cell ss:StyleID="s16"><Data ss:Type="String">U</Data></Cell>
+    <Cell ss:StyleID="s18"><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row ss:Height="21">
+    <Cell ss:StyleID="s28"><Data ss:Type="String"> Fourniture des Alvéoles</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"/>
+   </Row>
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <PageSetup>
+    <Header x:Margin="0.3"/>
+    <Footer x:Margin="0.3"/>
+    <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>
+   </PageSetup>
+   <Selected/>
+   <TopRowVisible>3</TopRowVisible>
+   <Panes>
+    <Pane>
+     <Number>3</Number>
+     <ActiveRow>40</ActiveRow>
+     <ActiveCol>5</ActiveCol>
+    </Pane>
+   </Panes>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>
