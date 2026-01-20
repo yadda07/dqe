@@ -42,10 +42,11 @@ try:
     from .dqe_pro_tab import DQEProTab
     from .dqe_exe_tab import DQEExeTab
     from .dqe_pgc_tab import DQEPGCTab
+    from .dqe_recover_tab import DQERecoverTab
     MODULES_AVAILABLE = True
 except ImportError:
     _db_manager = _logger = _validator = None
-    DQEProTab = DQEExeTab = DQEPGCTab = None
+    DQEProTab = DQEExeTab = DQEPGCTab = DQERecoverTab = None
     MODULES_AVAILABLE = False
 
 
@@ -107,8 +108,6 @@ class ProgressWidget(QWidget):
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
-        # Barre de progression avec texte de pourcentage
         progress_layout = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -116,8 +115,6 @@ class ProgressWidget(QWidget):
         self.progress_bar.setMaximum(100)
         self.progress_bar.setTextVisible(True)
         progress_layout.addWidget(self.progress_bar)
-        
-        # Bouton d'annulation
         self.cancel_button = QPushButton("Annuler")
         self.cancel_button.setVisible(False)
         self.cancel_button.clicked.connect(self.cancel_operation)
@@ -168,29 +165,23 @@ class SROComboBox(QComboBox):
         """Charge la liste des SRO avec autocomplétion"""
         try:
             if _db_manager and _db_manager._connection_pool:
-                # Requête exacte demandée par l'utilisateur
                 query = "SELECT sro FROM rip_avg_nge.za_sro"
                 
                 print(f"Chargement SRO avec requête: {query}")
                 results = _db_manager.execute_query(query)
                 self.sro_list = [row[0] for row in results if row[0] and str(row[0]).strip()]
                 
-                # Configuration optimisée de l'autocomplétion
+                # Tooltip avec compteur SRO
+                self.setToolTip(f"{len(self.sro_list)} SRO disponibles - Tapez pour rechercher")
                 model = QStringListModel(self.sro_list)
                 completer = QCompleter()
                 completer.setModel(model)
-                
-                # Configuration pour afficher le popup
                 completer.setCaseSensitivity(Qt.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchContains)  # Recherche partielle
                 completer.setCompletionMode(QCompleter.PopupCompletion)  # Mode popup
                 completer.setMaxVisibleItems(10)  # Maximum 10 éléments visibles
-                
-                # Appliquer le completer au champ éditable
                 line_edit = self.lineEdit()
                 line_edit.setCompleter(completer)
-                
-                # Forcer l'affichage du popup dès qu'on tape
                 line_edit.textChanged.connect(lambda text: self._show_completions(text, completer))
                 
                 print(f" Liste SRO chargée: {len(self.sro_list)} éléments")
@@ -206,25 +197,18 @@ class SROComboBox(QComboBox):
             
             if _logger:
                 _logger.error("Erreur chargement SRO", exception=e)
-            
-            # En cas d'erreur, utiliser une liste vide
             self.sro_list = []
     
     def _show_completions(self, text: str, completer: QCompleter):
         """Force l'affichage des suggestions quand on tape"""
         if len(text) >= 1:  # Afficher dès 1 caractère
-            # Filtrer les SRO qui contiennent le texte
             matching_sros = [sro for sro in self.sro_list if text.upper() in sro.upper()]
             
             if matching_sros:
                 print(f" Recherche '{text}': {len(matching_sros)} SRO trouvés")
                 print(f"Exemples: {', '.join(matching_sros[:3])}{'...' if len(matching_sros) > 3 else ''}")
-                
-                # Mettre à jour le modèle avec les résultats filtrés
                 new_model = QStringListModel(matching_sros)
                 completer.setModel(new_model)
-                
-                # Forcer l'affichage du popup
                 if not completer.popup().isVisible():
                     completer.complete()
             else:
@@ -331,7 +315,7 @@ class DatabaseOperations:
             conn.close()
     
     @staticmethod
-    def execute_dqe_exe(sro: str, p_type: str) -> List[Dict[str, Any]]:
+    def execute_dqe_exe(sro: str, p_type: str, blocage: str = None) -> List[Dict[str, Any]]:
         db_params = DatabaseOperations.get_db_connection_params()
         if not db_params:
             raise RuntimeError("Paramètres DB non disponibles")
@@ -347,9 +331,9 @@ class DatabaseOperations:
         try:
             cursor = conn.cursor(cursor_factory=DictCursor)
             
-            print(f"Exécution de dqe_exe('{sro}', '{p_type}')")
-            query = "SELECT * FROM rip_avg_nge.dqe_exe(%s, %s)"
-            cursor.execute(query, (sro, p_type))
+            print(f"Exécution de dqe_exe('{sro}', '{p_type}', '{blocage}')")
+            query = "SELECT * FROM rip_avg_nge.dqe_exe(%s, %s, %s)"
+            cursor.execute(query, (sro, p_type, blocage))
             results = cursor.fetchall()
             
             print(f"Résultats bruts: {len(results)} lignes reçues de la base")
@@ -397,8 +381,6 @@ class DatabaseOperations:
             raw_results = cursor.fetchall()
             
             print(f"Résultats bruts de la fonction: {len(raw_results)} lignes")
-            
-            # DEBUG: Afficher les premières lignes pour voir la structure
             for i, row in enumerate(raw_results[:10]):
                 row_dict = dict(row)
                 print(f"Ligne {i+1}: {row_dict}")
@@ -406,8 +388,6 @@ class DatabaseOperations:
             results = []
             for i, row in enumerate(raw_results):
                 row_dict = dict(row)
-                
-                # CORRECTION: Essayer plusieurs variantes de clés possibles
                 designation = (row_dict.get("Désignation") or 
                               row_dict.get("designation") or 
                               row_dict.get("désignation") or "")
@@ -429,30 +409,20 @@ class DatabaseOperations:
                 print(f"  Unité: '{unite}'")
                 print(f"  Quantité: {quantite}")
                 print(f"  IDs: '{ids_str}'")
-                
-                # CORRECTION: Ne filtrer QUE les vraies lignes vides/en-têtes
                 if not designation or designation.strip() == "":
                     print(f"  -> IGNORÉ (désignation vide)")
                     continue
-                
-                # Ignorer les en-têtes spécifiques
                 if any(x in designation.lower() for x in [
                     "nom gc :", "désignation", "armoire de rue  -", 
                     "gc - tdr", "pose de poteaux", "fourniture des alvéoles"
                 ]):
                     print(f"  -> IGNORÉ (en-tête)")
                     continue
-                
-                # CORRECTION: Ne plus filtrer sur quantité == 0, laisser passer même les 0
-                # car certaines peuvent être légitimes
                 try:
                     quantite_num = float(quantite) if quantite is not None else 0
                 except (ValueError, TypeError):
                     print(f"  -> IGNORÉ (quantité invalide: {quantite})")
                     continue
-                
-                # CORRECTION: Ne plus exiger des IDs pour toutes les lignes
-                # Certaines lignes PGC peuvent être des totaux sans GIDs spécifiques
                 ids_list = []
                 if ids_str and str(ids_str).strip():
                     try:
@@ -460,9 +430,6 @@ class DatabaseOperations:
                         print(f"  -> IDs parsés: {len(ids_list)} éléments")
                     except ValueError as e:
                         print(f"  -> Erreur parsing IDs: {e}")
-                        # Ne pas ignorer, juste laisser la liste vide
-                
-                # CORRECTION: Accepter même sans IDs si quantité > 0
                 if quantite_num > 0 or ids_list:
                     result = DQEResult(
                         designation=designation.strip(),
@@ -533,26 +500,18 @@ class LayerManager:
         designation = designation.lower()
         
         print(f"Détection table PGC pour: '{designation}'")
-        
-        # Chambres
         if any(x in designation for x in ["pose de chambre", "chambre l"]):
             print("  -> Table PGC: gc_exe.infra_pt_chb")
             return "gc_exe.infra_pt_chb"
-        
-        # Poteaux
         elif any(x in designation for x in ["pose poteau", "poteau rauv"]):
             print("  -> Table PGC: gc_exe.infra_pt_autres")
             return "gc_exe.infra_pt_autres"
-        
-        # Tranchées et travaux de terrassement (le plus courant)
         elif any(x in designation for x in [
             "tranchée", "micro tranchée", "forage dirigé", "encorbellement",
             "pvc ", "pehd", "alvéole"
         ]):
             print("  -> Table PGC: gc_exe.t_cheminement")
             return "gc_exe.t_cheminement"
-        
-        # Par défaut pour PGC
         else:
             print("  -> Table PGC par défaut: gc_exe.t_cheminement")
             return "gc_exe.t_cheminement"
@@ -563,8 +522,6 @@ class LayerManager:
         designation = designation.lower()
         
         print(f"Détection de table pour: '{designation}'")
-        
-        # Tables EXE spécifiques (génie civil)
         if any(x in designation for x in ["tranchée", "micro tranchée", "forage dirigé", "encorbellement"]):
             print("  -> Détecté comme GC EXE (cheminement)")
             return "gc_exe.t_cheminement"
@@ -577,31 +534,21 @@ class LayerManager:
         elif any(x in designation for x in ["pvc ", "pehd"]):
             print("  -> Détecté comme GC EXE (alvéoles)")
             return "gc_exe.t_cheminement"
-        
-        # Tables PRO/EXE - BPE et équipements
         elif any(x in designation for x in ["bpe", "pa ", "pa)", "pbo", "f&p bpe", "f&p pa", "f&p de pbo"]):
             print("  -> Détecté comme BPE/PA/PBO")
             return "rip_avg_nge.bpe"
         elif "sro" in designation:
             print("  -> Détecté comme SRO")
             return "rip_avg_nge.bpe"
-        
-        # Tables câbles et fibres optiques
         elif any(x in designation for x in ["cable", "câble", "fibre", "fo ", "fourniture et pose de câble"]):
             print("  -> Détecté comme câble")
             return "rip_avg_nge.cables"
-        
-        # Tables prises et raccordements
         elif any(x in designation for x in ["prise", "dtr", "rad", "nbre de prises"]):
             print("  -> Détecté comme Prise")
             return "rbal.rbal_auvergne"
-        
-        # Tables génie civil PRO
         elif any(x in designation for x in ["gc", "génie civil", "cheminement", "lineaire", "infra"]):
             print("  -> Détecté comme GC/Cheminement PRO")
             return "rip_avg_nge.t_cheminement"
-        
-        # Par défaut pour les câbles
         else:
             print("  -> Type non reconnu, utilisation de cables par défaut")
             return "rip_avg_nge.cables"
@@ -629,8 +576,6 @@ class LayerManager:
             
             schema, table = table_name.split(".", 1) if "." in table_name else ("public", table_name)
             print(f"        Schéma: {schema}, Table: {table}")
-            
-            # Filtre simple avec gid IN (...)
             ids_joined = ",".join(gids_list)
             sql_filter = f"gid IN ({ids_joined})"
             print(f"        Filtre SQL: {sql_filter[:100]}{'...' if len(sql_filter) > 100 else ''}")
@@ -684,8 +629,6 @@ class LayerManager:
             
             conn.set_session(autocommit=False)
             cursor = conn.cursor()
-            
-            # Vérifier la présence de câbles découpés
             print(f"Vérification de la présence de câbles découpés pour le SRO '{sro}'...")
             cursor.execute("SELECT COUNT(*) FROM rip_avg_nge.fddcpi2(%s) WHERE cab_type = 'CDI'", (sro,))
             count_cables = cursor.fetchone()[0]
@@ -695,14 +638,10 @@ class LayerManager:
                 return []
             
             print(f"{count_cables} segments de câbles découpés trouvés pour le SRO '{sro}'")
-            
-            # Créer table permanente unique
             sro_safe = sro.replace("/", "_").replace("\\", "_").replace(" ", "_")
             today = datetime.now().strftime("%Y%m%d")
             unique_id = uuid.uuid4().hex[:6]
             permanent_table_name = f"cables_decoupes_{sro_safe}_{today}_{unique_id}"
-            
-            # Garantir un nom valide
             if len(permanent_table_name) > 50:
                 sro_id = sro.split("/")[-1]
                 permanent_table_name = f"cables_dec_{sro_id}_{today}_{unique_id}"
@@ -710,11 +649,7 @@ class LayerManager:
             qualified_table_name = f"temporaire.{permanent_table_name}"
             
             print(f"Création de la table permanente '{qualified_table_name}'...")
-            
-            # Supprimer si existe
             cursor.execute(f"DROP TABLE IF EXISTS {qualified_table_name}")
-            
-            # Créer la table permanente avec normalisation des capacités
             cursor.execute(f"""
                 CREATE TABLE {qualified_table_name} AS
                 SELECT 
@@ -735,10 +670,8 @@ class LayerManager:
                     '{sro}' AS sro_source,
                     NOW() AS date_creation
                 FROM rip_avg_nge.fddcpi2(%s) c
-                WHERE cab_type = 'CDI' AND "DCE" = 'O' AND affectation != '3'
+                WHERE cab_type = 'CDI' AND \"DCE\" = 'O' AND affectation != '3'
             """, (sro,))
-            
-            # Créer des index pour optimiser
             cursor.execute(f"""
                 CREATE INDEX idx_{permanent_table_name}_posemode 
                 ON {qualified_table_name}(posemode, normalized_capa)
@@ -753,8 +686,6 @@ class LayerManager:
             conn.commit()
             
             print(f"Table permanente '{qualified_table_name}' créée avec succès!")
-            
-            # Récupérer les catégories
             cursor.execute(f"""
                 SELECT 
                     posemode,
@@ -773,13 +704,9 @@ class LayerManager:
             if not uri:
                 print("Erreur: Impossible de récupérer l'URI de connexion")
                 return []
-            
-            # Créer les couches par catégorie
             for idx, (posemode, capa, count) in enumerate(categories):
                 if count == 0:
                     continue
-                
-                # Noms selon le format DQE
                 if posemode == 0:
                     layer_name = f"Câble de {capa} FO en conduite"
                 elif posemode == 1:
@@ -788,15 +715,11 @@ class LayerManager:
                     layer_name = f"Câble optique de {capa} FO en façade"
                 else:
                     layer_name = f"Câble de {capa} FO (mode pose {posemode})"
-                
-                # Requête SQL utilisant la table permanente
                 sql_query = f"""
                     SELECT * 
                     FROM {qualified_table_name}
                     WHERE posemode = {posemode} AND normalized_capa = {capa}
                 """
-                
-                # Créer la couche QGIS
                 uri_copy = QgsDataSourceUri(uri.uri())
                 uri_copy.setDataSource("", f"({sql_query})", "geom", "", "gid_dc2")
                 
@@ -852,7 +775,6 @@ class ExcelManager:
         
         if not os.path.exists(template_path):
             print(f" Template non trouvé: {template_path}")
-            # Fallback vers template PRO si le spécifique n'existe pas
             fallback_path = os.path.join(plugin_dir, 'files', 'template_dqe_pro.xlsx')
             if os.path.exists(fallback_path):
                 print(f"Utilisation du template fallback: {fallback_path}")
@@ -871,18 +793,11 @@ class ExcelManager:
         
         try:
             print(f"\n=== Génération Excel {operation_type.upper()} ===")
-            
-            # Récupérer le template approprié
             template_path = ExcelManager.get_template_path(operation_type)
             if not template_path:
                 print(" Aucun template disponible, génération basique")
                 return ExcelManager._create_basic_excel(results, sro, operation_type, troncon)
-            
-            # Préparation des données
             df = pd.DataFrame(results)
-            
-            # IMPORTANT: Préserver les IDs dans results pour le chargement des couches
-            # Ne supprimer que du DataFrame Excel, pas de results original
             if 'ids' in df.columns:
                 print(f"Conservation des IDs des câbles découpés pour {operation_type}")
                 df = df.drop(columns=['ids'])  # Supprimer seulement du DataFrame Excel
@@ -893,8 +808,6 @@ class ExcelManager:
                 if "Quantité" in df.columns:
                     df["Quantité"] = pd.to_numeric(df["Quantité"], errors='coerce')
                     df["Quantité"] = df["Quantité"].round().fillna(0).astype(int)
-            
-            # Chemin de sortie
             temp_dir = tempfile.gettempdir()
             sro_safe = sro.replace('/', '_')
             
@@ -904,18 +817,10 @@ class ExcelManager:
                 excel_path = os.path.join(temp_dir, f"dqe_{operation_type}_{sro_safe}_{int(time.time())}.xlsx")
             
             print(f"Fichier de sortie: {excel_path}")
-            
-            # Copier le template vers le fichier de sortie
             shutil.copy2(template_path, excel_path)
             print(f"Template copié vers: {excel_path}")
-            
-            # Charger le workbook et remplir les données
             workbook = load_workbook(excel_path)
-            
-            # Déterminer la feuille à utiliser
             sheet_name = f"DQE {operation_type.upper()}"
-            
-            # Essayer de trouver la bonne feuille
             target_sheet = None
             for sheet in workbook.sheetnames:
                 if operation_type.upper() in sheet.upper():
@@ -924,23 +829,16 @@ class ExcelManager:
                     break
             
             if not target_sheet:
-                # Prendre la première feuille par défaut
                 target_sheet = workbook.active
                 print(f"Feuille par défaut utilisée: {target_sheet.title}")
-            
-            # Remplir les données selon le type
             if operation_type.upper() == 'PGC':
                 ExcelManager._fill_pgc_template(target_sheet, df, sro, troncon)
             else:
                 ExcelManager._fill_standard_template(target_sheet, df, operation_type)
-            
-            # Sauvegarder et fermer
             workbook.save(excel_path)
             workbook.close()
             
             print(f" Rapport Excel généré: {excel_path}")
-            
-            # Ouvrir automatiquement
             ExcelManager._open_excel_file(excel_path)
             
             return excel_path
@@ -958,8 +856,6 @@ class ExcelManager:
         """Remplit spécifiquement le template PGC avec gestion dynamique des alvéoles et du nom GC"""
         print(f"Remplissage template PGC avec {len(df)} lignes")
         print(f"SRO: {sro}, Tronçon: {troncon}")
-        
-        # 1. GÉRER LA LIGNE "Nom GC :" dynamiquement
         gc_row = None
         for row in range(1, min(20, sheet.max_row + 1)):
             cell_value = sheet.cell(row=row, column=1).value
@@ -969,14 +865,11 @@ class ExcelManager:
                 break
         
         if gc_row:
-            # Remplacer par le bon tronçon
             new_gc_text = f"Nom GC : {troncon}"
             sheet.cell(row=gc_row, column=1, value=new_gc_text)
             print(f" Ligne GC mise à jour: '{new_gc_text}'")
         else:
             print(" Ligne 'Nom GC :' non trouvée dans le template")
-        
-        # 2. Rechercher la ligne d'en-tête "Désignation"
         header_row = None
         for row in range(1, min(50, sheet.max_row + 1)):
             cell_value = sheet.cell(row=row, column=1).value
@@ -988,16 +881,12 @@ class ExcelManager:
         if not header_row:
             print(" En-tête 'Désignation' non trouvé, utilisation ligne 1")
             header_row = 1
-        
-        # 3. Trouver la section "Fourniture des Alvéoles" dans le template
         alveoles_section_row = None
         for row in range(header_row, sheet.max_row + 1):
             cell_value = sheet.cell(row=row, column=1).value
             if cell_value and "Fourniture des Alvéoles" in str(cell_value):
                 alveoles_section_row = row
                 break
-        
-        # 4. Séparer les données en groupes
         alveoles_data = []
         other_data = []
         
@@ -1005,15 +894,11 @@ class ExcelManager:
             designation = str(result_row['Désignation']).strip()
             quantite = result_row['Quantité']
             unite = result_row.get('Unité', 'ml')
-            
-            # Ignorer les en-têtes et lignes spéciales
             if not designation or any(x in designation.lower() for x in [
                 "nom gc", "désignation", "armoire de rue  -", "gc - tdr", 
                 "pose de poteaux", "fourniture des alvéoles"
             ]):
                 continue
-            
-            # Détecter les éléments d'alvéoles (PVC/PEHD)
             if any(x in designation.lower() for x in ["pvc ", "pehd"]):
                 alveoles_data.append({
                     'designation': designation,
@@ -1026,8 +911,6 @@ class ExcelManager:
                     'unite': unite,
                     'quantite': quantite
                 })
-        
-        # 5. Traiter d'abord les éléments standards (non-alvéoles)
         matched_count = 0
         for data in other_data:
             template_row = ExcelManager._find_template_row(sheet, data['designation'], header_row)
@@ -1036,23 +919,17 @@ class ExcelManager:
                 sheet.cell(row=template_row, column=3, value=data['quantite'])
                 matched_count += 1
             else:
-                # Debug pour les lignes non trouvées (probablement les 6FO)
                 if "6 FO" in data['designation'] or "6FO" in data['designation']:
                     print(f"DEBUG: Ligne 6FO NON TROUVÉE dans template: '{data['designation']}'")
                 else:
                     print(f"DEBUG: Ligne NON TROUVÉE dans template: '{data['designation']}'")
-        
-        # 6. Traiter les alvéoles dynamiquement
         if alveoles_data and alveoles_section_row:
             print(f"Ajout de {len(alveoles_data)} alvéoles après la ligne {alveoles_section_row}")
             next_row = alveoles_section_row + 1
             
             for alv_data in alveoles_data:
-                # Trouver la prochaine ligne vide après la section alvéoles
                 while next_row <= sheet.max_row and sheet.cell(row=next_row, column=1).value:
                     next_row += 1
-                
-                # Ajouter la ligne alvéole
                 sheet.cell(row=next_row, column=1, value=alv_data['designation'])
                 sheet.cell(row=next_row, column=2, value=alv_data['unite'])
                 sheet.cell(row=next_row, column=3, value=alv_data['quantite'])
@@ -1061,8 +938,6 @@ class ExcelManager:
                 matched_count += 1
         elif alveoles_data:
             print(f" {len(alveoles_data)} alvéoles trouvées mais section 'Fourniture des Alvéoles' manquante dans template")
-        
-        # Résumé final
         print(f"\n=== RÉSUMÉ REMPLISSAGE PGC ===")
         print(f"Tronçon: {troncon}")
         print(f"Lignes standards mappées: {matched_count - len(alveoles_data) if alveoles_data else matched_count}")
@@ -1074,18 +949,14 @@ class ExcelManager:
     @staticmethod
     def _find_next_section(sheet, current_section_row: int) -> int:
         """Trouve la ligne de fin de la section courante (début de la section suivante)"""
-        # Chercher la prochaine ligne qui commence une nouvelle section
         for row in range(current_section_row + 1, min(current_section_row + 50, sheet.max_row + 1)):
             cell_value = sheet.cell(row=row, column=1).value
             if cell_value and isinstance(cell_value, str):
-                # Si la ligne est en gras ou contient des mots-clés de section
                 cell = sheet.cell(row=row, column=1)
                 if (cell.font and cell.font.bold) or any(keyword in cell_value.lower() for keyword in [
                     "fourniture", "pose de", "armoire", "gc -", "transport", "distribution"
                 ]):
                     return row - 1
-        
-        # Si pas trouvé, retourner une estimation
         return current_section_row + 20
     
     @staticmethod
@@ -1095,10 +966,8 @@ class ExcelManager:
             return
         
         if operation_type.upper() == 'EXE':
-            # LOGIQUE EXE : Correspondance par index + alvéoles dynamiques
             return ExcelManager._fill_exe_template(sheet, df)
         else:
-            # LOGIQUE PRO : Écrire nouvelles lignes après en-tête
             return ExcelManager._fill_pro_template(sheet, df)
     
     @staticmethod
@@ -1111,8 +980,6 @@ class ExcelManager:
             designation = row['Désignation']
             quantite = row['Quantité']
             unite = row.get('Unité', 'ml')
-            
-            # Vérifier si c'est une alvéole (dynamique)
             if any(keyword in designation.lower() for keyword in ['pvc', 'pehd', 'alvéole', 'alveole']):
                 alveoles_data.append({
                     'designation': designation,
@@ -1120,16 +987,10 @@ class ExcelManager:
                     'quantite': quantite
                 })
             else:
-                # Correspondance directe par index pour tous les autres éléments
                 target_row = i + 2  # +2 car ligne 1 = en-tête, données à partir de ligne 2
-                
-                # Mettre à jour seulement la quantité (colonne 3)
                 sheet.cell(row=target_row, column=3, value=quantite)
                 updated_rows.append(f"{designation} -> ligne {target_row}")
-        
-        # Traitement dynamique des alvéoles
         if alveoles_data:
-            # Trouver la section alvéoles
             alveoles_header_row = None
             for row in range(130, min(sheet.max_row + 10, 150)):
                 cell_value = sheet.cell(row=row, column=1).value
@@ -1138,10 +999,8 @@ class ExcelManager:
                     break
             
             if alveoles_header_row:
-                # Ajouter les alvéoles dynamiquement
                 next_row = alveoles_header_row + 1
                 for alv_data in alveoles_data:
-                    # Trouver la prochaine ligne vide
                     while next_row <= sheet.max_row and sheet.cell(row=next_row, column=1).value:
                         next_row += 1
                     
@@ -1157,28 +1016,21 @@ class ExcelManager:
     @staticmethod
     def _fill_pro_template(sheet, df):
         """Remplit le template PRO (écrire nouvelles lignes après en-tête)"""
-        # Chercher l'en-tête "Désignation"
         start_row = 2  # Par défaut ligne 2
         for row in range(1, min(20, sheet.max_row + 1)):
             cell_value = sheet.cell(row=row, column=1).value
             if cell_value and "Désignation" in str(cell_value):
                 start_row = row + 1
                 break
-        
-        # Nettoyer les données existantes après l'en-tête (simple)
         for row in range(start_row, sheet.max_row + 1):
             sheet.cell(row=row, column=1).value = None
             sheet.cell(row=row, column=2).value = None
             sheet.cell(row=row, column=3).value = None
-        
-        # Écrire les nouvelles données
         updated_rows = []
         for i, (_, row) in enumerate(df.iterrows()):
             designation = row['Désignation']
             unite = row.get('Unité', '')
             quantite = row['Quantité']
-            
-            # Ignorer les lignes vides
             if not designation or str(designation).strip() == '':
                 continue
             
@@ -1195,28 +1047,21 @@ class ExcelManager:
     def _find_template_row(sheet, designation: str, start_row: int = 1, end_row: int = None) -> Optional[int]:
         """Trouve la ligne correspondante dans le template"""
         designation_lower = designation.lower().strip()
-        
-        # Recherche simple et rapide
         for row in range(start_row, min(end_row or sheet.max_row + 1, start_row + 200)):
             cell_value = sheet.cell(row=row, column=1).value
             if not cell_value:
                 continue
             
             template_text = str(cell_value).lower().strip()
-            
-            # Correspondance exacte (pour BPE et autres)
             if template_text == designation_lower:
                 return row
             
-            # Correspondance partielle simple pour câbles (sans parenthèses)
             if "câble" in designation_lower and "câble" in template_text:
-                # Extraire nombre de FO
                 import re
                 des_fo = re.search(r'(\d+)\s*fo', designation_lower)
                 tem_fo = re.search(r'(\d+)\s*fo', template_text)
                 
                 if des_fo and tem_fo and des_fo.group(1) == tem_fo.group(1):
-                    # Vérifier les mots-clés critiques
                     critical_words = ['conduite', 'façade', 'aérien', 'immeuble']
                     for word in critical_words:
                         if (word in designation_lower) != (word in template_text):
@@ -1228,7 +1073,6 @@ class ExcelManager:
     
     @staticmethod
     def _create_basic_excel(results: List[Dict], sro: str, operation_type: str, troncon: str = None):
-        """Génération Excel basique si pas de template"""
         try:
             df = pd.DataFrame(results)
             
@@ -1261,7 +1105,6 @@ class ExcelManager:
     
     @staticmethod
     def _open_excel_file(excel_path: str):
-        """Ouvre le fichier Excel avec l'application par défaut"""
         try:
             import subprocess
             import platform
@@ -1285,7 +1128,8 @@ class DQEChargeur(QDialog):
         super().__init__(parent)
         
         self.setWindowTitle("Chargeur DQE")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(380, 280)
+        self.resize(400, 320)
         self.setModal(False)
         
         self.setup_ui()
@@ -1295,8 +1139,11 @@ class DQEChargeur(QDialog):
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(4)
         
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(5)
         
         title_label = QLabel("Chargeur DQE")
         title_font = QFont()
@@ -1307,7 +1154,12 @@ class DQEChargeur(QDialog):
         
         header_layout.addStretch()
         
-        version_label = QLabel("v3.1.0")
+        # Indicateur connexion DB
+        self.db_status_label = QLabel()
+        self._update_db_status()
+        header_layout.addWidget(self.db_status_label)
+        
+        version_label = QLabel("v3.3.0")
         version_label.setStyleSheet("color: #666; font-style: italic;")
         header_layout.addWidget(version_label)
         
@@ -1319,6 +1171,7 @@ class DQEChargeur(QDialog):
         layout.addWidget(line)
         
         self.tab_widget = QTabWidget()
+        self.tab_widget.setContentsMargins(0, 0, 0, 0)
         
         self.pro_tab = DQEProTab()
         self.tab_widget.addTab(self.pro_tab, "DQE PRO")
@@ -1328,6 +1181,12 @@ class DQEChargeur(QDialog):
         
         self.pgc_tab = DQEPGCTab()
         self.tab_widget.addTab(self.pgc_tab, "DQE PGC")
+        
+        self.recover_tab = DQERecoverTab()
+        self.tab_widget.addTab(self.recover_tab, "DQE Recover")
+        
+        # Ajuster la taille selon l'onglet
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
         
         layout.addWidget(self.tab_widget)
         
@@ -1339,45 +1198,86 @@ class DQEChargeur(QDialog):
         button_box.addButton(help_button, QDialogButtonBox.HelpRole)
         
         layout.addWidget(button_box)
-        
-        # Style par défaut Qt - pas de personnalisation
         pass
+    
+    def on_tab_changed(self, index):
+        """Ajuste la taille du dialogue selon l'onglet actif"""
+        tab_name = self.tab_widget.tabText(index)
+        if "Recover" in tab_name:
+            self.setMinimumSize(600, 500)
+            self.resize(650, 600)
+        else:
+            self.setMinimumSize(380, 280)
+            self.resize(400, 320)
     
     def show_help(self):
         help_text = """
-        <h2>Guide d'utilisation - Plugin DQE</h2>
+        <style>
+        h2 { color: #2E7D32; margin-bottom: 15px; }
+        h3 { color: #1565C0; margin-top: 20px; margin-bottom: 10px; }
+        .module { background: #F5F5F5; padding: 10px; margin: 8px 0; border-radius: 4px; }
+        .param { color: #D84315; font-weight: 500; }
+        .desc { color: #424242; margin-left: 10px; }
+        .feature { color: #2E7D32; }
+        .new { color: #FF6F00; font-weight: 500; }
+        </style>
         
-        <h3>DQE PRO</h3>
-        <ul>
-            <li><b>SRO</b> : Code au format XXX/XXX/XXX/XXX</li>
-            <li><b>Type</b> : Transport ou Distribution</li>
-            <li><b>Usage</b> : Génération des quantitatifs projet</li>
-        </ul>
+        <h2>Guide d'utilisation - Plugin DQE v3.2.0</h2>
         
-        <h3>DQE EXE</h3>
-        <ul>
-            <li><b>SRO</b> : Code au format XXX/XXX/XXX/XXX</li>
-            <li><b>Type</b> : Transport ou Distribution</li>
-            <li><b>Usage</b> : Génération des quantitatifs exécution (projet + génie civil)</li>
-        </ul>
+        <div class="module">
+        <h3>DQE PRO - Quantitatifs Projet</h3>
+        • <span class="param">SRO</span> : <span class="desc">Code au format XXX/XXX/XXX/XXX</span><br>
+        • <span class="param">Type</span> : <span class="desc">Transport ou Distribution</span><br>
+        • <span class="feature">Génère les quantitatifs projet</span>
+        </div>
         
-        <h3>DQE PGC</h3>
-        <ul>
-            <li><b>SRO</b> : Code pour sélectionner les tronçons disponibles</li>
-            <li><b>Tronçon</b> : Sélection du tronçon à traiter</li>
-            <li><b>Mode gestionnaire</b> : Permet corrections manuelles des attributions</li>
-            <li><b>Mode direct</b> : Traitement automatique sans intervention</li>
-        </ul>
+        <div class="module">
+        <h3>DQE EXE - Quantitatifs Exécution</h3>
+        • <span class="param">SRO</span> : <span class="desc">Code au format XXX/XXX/XXX/XXX</span><br>
+        • <span class="param">Type</span> : <span class="desc">Transport ou Distribution</span><br>
+        • <span class="feature">Quantitatifs exécution + génie civil</span><br>
+        • <span class="feature">Intègre tranchées, chambres, poteaux, alvéoles</span>
+        </div>
         
-        <h3>Généralités</h3>
-        <ul>
-            <li><b>Excel</b> : Génération automatique avec templates spécialisés</li>
-            <li><b>Couches QGIS</b> : Chargement organisé par catégories</li>
-            <li><b>Validation</b> : Sauvegarde des résultats en base</li>
-        </ul>
+        <div class="module">
+        <h3>DQE PGC - Attribution Gestionnaire</h3>
+        • <span class="param">SRO</span> : <span class="desc">Code pour sélectionner les tronçons</span><br>
+        • <span class="param">Tronçon</span> : <span class="desc">Sélection du tronçon à traiter</span><br>
+        • <span class="param">Mode gestionnaire</span> : <span class="desc">Corrections manuelles possibles</span><br>
+        • <span class="param">Mode direct</span> : <span class="desc">Traitement sans intervention</span><br>
+        <br>
+        <span class="new">Améliorations v3.2.0 :</span><br>
+        • <span class="feature">Support infrastructures mixtes</span><br>
+        • <span class="feature">Gestion poteaux aériens</span><br>
+        • <span class="feature">Calculs redevances corrigés</span>
+        </div>
+        
+        <div class="module">
+        <h3>Fonctionnalités</h3>
+        • <span class="feature">Export Excel avec templates</span><br>
+        • <span class="feature">Chargement couches QGIS</span><br>
+        • <span class="feature">Sauvegarde en base</span>
+        </div>
         """
         
         QMessageBox.information(self, "Aide DQE Chargeur", help_text)
+    
+    def _update_db_status(self):
+        """Met à jour l'indicateur de connexion DB"""
+        if _db_manager and _db_manager._connection_pool:
+            self.db_status_label.setText("DB")
+            self.db_status_label.setStyleSheet(
+                "color: white; background-color: #2E7D32; "
+                "padding: 2px 6px; border-radius: 3px; font-size: 10px;"
+            )
+            self.db_status_label.setToolTip("Connexion base de données active")
+        else:
+            self.db_status_label.setText("DB")
+            self.db_status_label.setStyleSheet(
+                "color: white; background-color: #C62828; "
+                "padding: 2px 6px; border-radius: 3px; font-size: 10px;"
+            )
+            self.db_status_label.setToolTip("Connexion base de données inactive")
 
 
 def run_dqe_chargeur():

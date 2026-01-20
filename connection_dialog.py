@@ -31,19 +31,13 @@ class ConnectionDialog(QDialog):
         self.setWindowTitle("Configuration de la connexion PostgreSQL")
         self.setModal(True)
         self.resize(450, 350)
-        
-        # Données de connexion
         self.connection_config = None
-        
-        # Interface
         self.setup_ui()
         self.load_saved_values()
     
     def setup_ui(self):
         """Configure l'interface utilisateur"""
         layout = QVBoxLayout(self)
-        
-        # Titre et description
         title_label = QLabel("Configuration de la base de données DQE")
         title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #2E7D32;")
         layout.addWidget(title_label)
@@ -55,12 +49,8 @@ class ConnectionDialog(QDialog):
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: #555; margin-bottom: 10px;")
         layout.addWidget(desc_label)
-        
-        # Groupe de connexion
         conn_group = QGroupBox("Paramètres de connexion")
         conn_layout = QFormLayout(conn_group)
-        
-        # Champs de saisie
         self.host_edit = QLineEdit()
         self.host_edit.setPlaceholderText("localhost ou IP du serveur")
         self.host_edit.setText("localhost")
@@ -85,8 +75,6 @@ class ConnectionDialog(QDialog):
         conn_layout.addRow("Mot de passe :", self.password_edit)
         
         layout.addWidget(conn_group)
-        
-        # Options de sauvegarde
         save_group = QGroupBox("Options de sauvegarde")
         save_layout = QVBoxLayout(save_group)
         
@@ -101,8 +89,6 @@ class ConnectionDialog(QDialog):
         save_layout.addWidget(self.save_json_checkbox)
         
         layout.addWidget(save_group)
-        
-        # Boutons
         button_layout = QHBoxLayout()
         
         self.test_button = QPushButton("Tester la connexion")
@@ -122,8 +108,6 @@ class ConnectionDialog(QDialog):
         button_layout.addWidget(self.ok_button)
         
         layout.addLayout(button_layout)
-        
-        # Focus sur le premier champ vide
         if not self.host_edit.text():
             self.host_edit.setFocus()
         elif not self.database_edit.text():
@@ -136,7 +120,6 @@ class ConnectionDialog(QDialog):
     def load_saved_values(self):
         """Charge les valeurs sauvegardées précédemment"""
         try:
-            # Essayer de charger depuis le fichier JSON du plugin
             config_file = os.path.join(os.path.dirname(__file__), 'config.json')
             if os.path.exists(config_file):
                 with open(config_file, 'r', encoding='utf-8') as f:
@@ -147,7 +130,6 @@ class ConnectionDialog(QDialog):
                 self.port_spinbox.setValue(int(db_config.get('port', 5432)))
                 self.database_edit.setText(db_config.get('database', ''))
                 self.user_edit.setText(db_config.get('user', ''))
-                # Ne pas charger le mot de passe pour des raisons de sécurité
                 
         except Exception:
             pass  # Ignorer les erreurs de chargement
@@ -194,14 +176,9 @@ class ConnectionDialog(QDialog):
             return
         
         try:
-            # Tester la connexion
             data = self.get_connection_data()
             config = DatabaseConfig(**data)
-            
-            # Import ici pour éviter les imports circulaires
             import psycopg2
-            
-            # Test de connexion simple
             conn = psycopg2.connect(**config.to_dict())
             cursor = conn.cursor()
             cursor.execute("SELECT version()")
@@ -228,8 +205,6 @@ class ConnectionDialog(QDialog):
         try:
             data = self.get_connection_data()
             self.connection_config = DatabaseConfig(**data)
-            
-            # Sauvegarder si demandé
             if self.save_qgis_checkbox.isChecked():
                 self.save_to_qgis(data)
             
@@ -249,8 +224,6 @@ class ConnectionDialog(QDialog):
         try:
             settings = QgsSettings()
             conn_name = "DQE_Connection"
-            
-            # Vérifier si la connexion existe déjà
             settings.beginGroup("PostgreSQL/connections")
             connections = settings.childGroups()
             settings.endGroup()
@@ -265,8 +238,6 @@ class ConnectionDialog(QDialog):
                 )
                 if reply != QMessageBox.Yes:
                     return
-            
-            # Sauvegarder la connexion
             settings.beginGroup(f"PostgreSQL/connections/{conn_name}")
             settings.setValue("host", data['host'])
             settings.setValue("port", data['port'])
@@ -296,8 +267,6 @@ class ConnectionDialog(QDialog):
         """Sauvegarde la connexion dans un fichier JSON"""
         try:
             config_file = os.path.join(os.path.dirname(__file__), 'config.json')
-            
-            # Créer la structure de configuration
             config_data = {
                 "database": {
                     "host": data['host'],
@@ -307,8 +276,6 @@ class ConnectionDialog(QDialog):
                     "password": data['password']
                 }
             }
-            
-            # Sauvegarder
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
             

@@ -17,8 +17,6 @@ from PyQt5.QtGui import QIcon
 from qgis.core import QgsApplication, QgsProject, Qgis
 from qgis.gui import QgsMessageBar
 from qgis.utils import iface
-
-# Import des modules avec gestion d'erreurs
 try:
     from .dqe_utils import initialize_dqe_system, cleanup_dqe_system, _logger
     from .dqe_chargeur_dialog import DQEChargeur
@@ -43,12 +41,8 @@ class DqeChargeurPlugin:
         """Initialise le plugin"""
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
-        
-        # Composants UI
         self.action = None
         self.dialog = None
-        
-        # État
         self.initialized = False
         
         if _logger:
@@ -57,13 +51,8 @@ class DqeChargeurPlugin:
     def initGui(self):
         """Initialise l'interface graphique"""
         try:
-            # Création de l'action principale
             self._create_action()
-            
-            # Ajout au menu
             self._add_to_menu()
-            
-            # Initialisation du système DQE
             self._initialize_system()
             
             if _logger:
@@ -81,15 +70,10 @@ class DqeChargeurPlugin:
     
     def _create_action(self):
         """Crée l'action principale"""
-        # Icône
         icon_path = os.path.join(self.plugin_dir, 'icon.png')
         icon = QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
-        
-        # Action
         self.action = QAction(icon, "Chargeur DQE", self.iface.mainWindow())
         self.action.triggered.connect(self.run_dialog)
-        
-        # Tooltip
         self.action.setToolTip(
             "Chargeur DQE - Gestion des Devis Quantitatifs Estimatifs\n"
             "DQE PRO, EXE et PGC avec chargement optimisé"
@@ -101,10 +85,7 @@ class DqeChargeurPlugin:
     def _add_to_menu(self):
         """Ajoute au menu QGIS"""
         try:
-            # Menu Vector
             self.iface.addPluginToVectorMenu("&DQE Chargeur", self.action)
-            
-            # Barre d'outils
             self.iface.addVectorToolBarIcon(self.action)
             
             if _logger:
@@ -117,7 +98,6 @@ class DqeChargeurPlugin:
     
     def _initialize_system(self):
         """Initialise le système DQE de manière robuste"""
-        # TOUJOURS activer l'action d'abord
         self.action.setEnabled(True)
         
         if not MODULES_LOADED:
@@ -125,8 +105,6 @@ class DqeChargeurPlugin:
                 _logger.warning("Modules non chargés - mode dégradé")
             else:
                 print("[DQE] Modules non chargés - mode dégradé")
-            
-            # Notification
             if self.iface:
                 self.iface.messageBar().pushMessage(
                     "DQE Plugin", "Modules non chargés - veuillez redémarrer QGIS",
@@ -135,7 +113,6 @@ class DqeChargeurPlugin:
             return
         
         try:
-            # Tentative d'initialisation avec pool réduit
             success = initialize_dqe_system(pool_size=2)
             
             if success:
@@ -145,15 +122,12 @@ class DqeChargeurPlugin:
                     _logger.info("Système DQE initialisé avec succès")
                 else:
                     print("[DQE] Système DQE initialisé avec succès")
-                
-                # Notification discrète de succès
                 if self.iface:
                     self.iface.messageBar().pushMessage(
                         "DQE Plugin", "Initialisé avec succès",
                         level=Qgis.Success, duration=3
                     )
             else:
-                # Échec mais on laisse l'action active en mode dégradé
                 if _logger:
                     _logger.warning("Échec initialisation - mode dégradé disponible")
                 else:
@@ -166,7 +140,6 @@ class DqeChargeurPlugin:
                     )
                 
         except Exception as e:
-            # Erreur mais on laisse l'action active
             error_msg = f"Erreur initialisation: {str(e)}"
             
             if _logger:
@@ -183,7 +156,6 @@ class DqeChargeurPlugin:
     def run_dialog(self):
         """Lance l'interface DQE"""
         try:
-            # Vérifications de base
             if not MODULES_LOADED:
                 QMessageBox.critical(
                     self.iface.mainWindow(),
@@ -194,7 +166,6 @@ class DqeChargeurPlugin:
                 return
             
             if not self.initialized:
-                # Permettre l'utilisation même si pas initialisé (mode dégradé)
                 reply = QMessageBox.question(
                     self.iface.mainWindow(),
                     "DQE Plugin",
@@ -207,16 +178,10 @@ class DqeChargeurPlugin:
                 
                 if reply == QMessageBox.No:
                     return
-            
-            # Création ou réactivation du dialogue
             if self.dialog is None:
                 self.dialog = DQEChargeur(self.iface.mainWindow())
-                
-                # Connexion du signal de fermeture
                 if hasattr(self.dialog, 'finished'):
                     self.dialog.finished.connect(self._on_dialog_closed)
-            
-            # Affichage
             self._show_dialog()
             
             if _logger:
@@ -237,9 +202,7 @@ class DqeChargeurPlugin:
     def _show_dialog(self):
         """Affiche le dialogue"""
         if self.dialog:
-            # Réinitialiser la position si nécessaire
             if not self.dialog.isVisible():
-                # Centrer sur QGIS
                 if self.iface and self.iface.mainWindow():
                     main_window = self.iface.mainWindow()
                     dialog_width = self.dialog.width()
@@ -249,13 +212,9 @@ class DqeChargeurPlugin:
                     y = main_window.y() + (main_window.height() - dialog_height) // 2
                     
                     self.dialog.move(x, y)
-            
-            # Affichage et mise au premier plan
             self.dialog.show()
             self.dialog.raise_()
             self.dialog.activateWindow()
-            
-            # Forcer le focus
             if hasattr(self.dialog, 'setFocus'):
                 self.dialog.setFocus()
     
@@ -264,30 +223,23 @@ class DqeChargeurPlugin:
         if _logger:
             _logger.debug("Interface DQE fermée")
         
-        # Optionnel: nettoyer les ressources du dialogue
-        # self.dialog = None  # On garde en mémoire pour performance
     
     def unload(self):
         """Décharge le plugin"""
         try:
             if _logger:
                 _logger.info("Déchargement plugin DQE")
-            
-            # Fermer le dialogue
             if self.dialog:
                 try:
                     if self.dialog.isVisible():
                         self.dialog.close()
                 except RuntimeError:
-                    # L'objet a été supprimé
                     pass
                 except Exception as e:
                     if _logger:
                         _logger.warning(f"Erreur fermeture dialogue: {e}")
                 finally:
                     self.dialog = None
-            
-            # Supprimer du menu
             if self.iface and self.action:
                 try:
                     self.iface.removePluginVectorMenu("&DQE Chargeur", self.action)
@@ -295,8 +247,6 @@ class DqeChargeurPlugin:
                 except Exception as e:
                     if _logger:
                         _logger.warning(f"Erreur suppression menu: {e}")
-            
-            # Nettoyage système DQE
             if MODULES_LOADED:
                 try:
                     cleanup_dqe_system()
@@ -315,14 +265,12 @@ class DqeChargeurPlugin:
                 _logger.error(error_msg)
     
     def reload_plugin(self):
-        """Recharge le plugin (utile pour le développement)"""
+        """Recharge le plugin """
         try:
             if _logger:
                 _logger.info("Rechargement du plugin demandé")
             
             self.unload()
-            
-            # Rechargement des modules Python
             if MODULES_LOADED:
                 import importlib
                 from . import dqe_utils, dqe_chargeur_dialog
@@ -354,16 +302,13 @@ class DqeChargeurPlugin:
             'dialog_open': self.dialog.isVisible() if self.dialog else False,
             'description': 'Plugin QGIS pour DQE PRO/EXE/PGC avec chargement optimisé'
         }
-
-
-# Fonctions utilitaires pour debug et test
 def get_plugin_instance():
-    """Retourne l'instance du plugin (pour debug)"""
+    """Retourne l'instance du plugin """
     return None
 
 
 def create_standalone_dialog():
-    """Crée un dialogue standalone (pour tests)"""
+    """Crée un dialogue standalone """
     if not MODULES_LOADED:
         raise ImportError("Modules DQE non chargés")
     
@@ -375,9 +320,6 @@ def create_standalone_dialog():
     
     dialog = DQEChargeur()
     return dialog
-
-
-# Export des classes principales
 __all__ = [
     'DqeChargeurPlugin', 
     'get_plugin_instance', 
