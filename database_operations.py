@@ -5,6 +5,7 @@ Opérations base de données pour le plugin DQE Chargeur
 """
 
 from typing import Dict, List, Any
+from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import DictCursor
 from .models import DQEResult
@@ -19,6 +20,46 @@ except ImportError:
 
 
 class DatabaseOperations:
+    def __init__(self, connection_params):
+        self.connection_params = connection_params
+        
+    @staticmethod
+    def _reorganize_redevance_columns(redevance_data):
+        """Réorganise les colonnes de redevance pour mettre les poteaux à la fin (cohérence première génération / régénération)"""
+        if not redevance_data:
+            return redevance_data
+        reorganized_data = []
+        
+        for raw_row in redevance_data:
+            row_dict = dict(raw_row)
+            new_row = {}
+            if 'concessionnaire_voirie' in row_dict:
+                new_row['concessionnaire_voirie'] = row_dict['concessionnaire_voirie']
+            alveoles_keys = [k for k in row_dict.keys() 
+                           if k != 'concessionnaire_voirie' and 'poteau' not in k.lower()]
+            for key in sorted(alveoles_keys):  # Tri alphabétique pour cohérence
+                new_row[key] = row_dict[key]
+            total_redevance = 0
+            for key in alveoles_keys:
+                value = row_dict[key]
+                if isinstance(value, (int, float)) or (hasattr(value, '__float__')):
+                    try:
+                        total_redevance += float(value)
+                    except (ValueError, TypeError):
+                        pass
+            new_row['total_redevance'] = total_redevance
+            poteaux_keys = [k for k in row_dict.keys() if 'poteau' in k.lower()]
+            for key in poteaux_keys:
+                if key.lower() in ['poteaux', 'nb_poteaux']:
+                    new_row['Poteaux_nb_unites'] = row_dict[key]  
+                else:
+                    new_row[key] = row_dict[key]
+            
+            reorganized_data.append(new_row)
+        
+        print(f" Réorganisation colonnes: poteaux déplacés à la fin")
+        return reorganized_data
+
     @staticmethod
     def get_db_connection_params():
         if _db_manager and _db_manager._config:
@@ -26,7 +67,9 @@ class DatabaseOperations:
         return None
     
     @staticmethod
-    def execute_dqe_pro(sro: str, p_type: str) -> List[Dict[str, Any]]:
+    @contextmanager
+    def get_connection():
+        """Context manager pour connexion DB - évite duplication de code"""
         db_params = DatabaseOperations.get_db_connection_params()
         if not db_params:
             raise RuntimeError("Paramètres DB non disponibles")
@@ -38,8 +81,14 @@ class DatabaseOperations:
             user=db_params["user"],
             password=db_params["password"]
         )
-        
         try:
+            yield conn
+        finally:
+            conn.close()
+    
+    @staticmethod
+    def execute_dqe_pro(sro: str, p_type: str) -> List[Dict[str, Any]]:
+        with DatabaseOperations.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=DictCursor)
             
             if p_type == 'T':
@@ -61,30 +110,15 @@ class DatabaseOperations:
             
             print(f"Résultats nettoyés: {len(cleaned_results)} lignes retournées")
             return cleaned_results
-            
-        finally:
-            conn.close()
     
     @staticmethod
-    def execute_dqe_exe(sro: str, p_type: str) -> List[Dict[str, Any]]:
-        db_params = DatabaseOperations.get_db_connection_params()
-        if not db_params:
-            raise RuntimeError("Paramètres DB non disponibles")
-        
-        conn = psycopg2.connect(
-            host=db_params["host"],
-            port=db_params["port"],
-            database=db_params["database"],
-            user=db_params["user"],
-            password=db_params["password"]
-        )
-        
-        try:
+    def execute_dqe_exe(sro: str, p_type: str, blocage: str = None) -> List[Dict[str, Any]]:
+        with DatabaseOperations.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=DictCursor)
             
-            print(f"Exécution de dqe_exe('{sro}', '{p_type}')")
-            query = "SELECT * FROM rip_avg_nge.dqe_exe(%s, %s)"
-            cursor.execute(query, (sro, p_type))
+            print(f"Exécution de dqe_exe('{sro}', '{p_type}', '{blocage}')")
+            query = "SELECT * FROM rip_avg_nge.dqe_exe(%s, %s, %s)"
+            cursor.execute(query, (sro, p_type, blocage))
             results = cursor.fetchall()
             
             print(f"Résultats bruts: {len(results)} lignes reçues de la base")
@@ -98,81 +132,47 @@ class DatabaseOperations:
             
             print(f"Résultats nettoyés: {len(cleaned_results)} lignes retournées")
             return cleaned_results
-            
-        finally:
-            conn.close()
     
     @staticmethod
     def execute_dqe_pgc(sro: str, troncon: str) -> List[DQEResult]:
-        """
-        CORRECTION CRITIQUE PGC : 
-        - Débogage complet des clés retournées par la fonction
-        - Gestion des en-têtes et lignes vides
-        - Récupération correcte des IDs
-        - Récupération données REDEVANCE pour Excel
-        - Support des deux modes : gestionnaire avec édition manuelle OU données existantes
-        """
-        db_params = DatabaseOperations.get_db_connection_params()
-        if not db_params:
-            raise RuntimeError("Paramètres DB non disponibles")
-        
-        conn = psycopg2.connect(
-            host=db_params["host"],
-            port=db_params["port"],
-            database=db_params["database"],
-            user=db_params["user"],
-            password=db_params["password"]
-        )
-        
-        try:
+        with DatabaseOperations.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=DictCursor)
             print(f"\n=== DÉBUT DQE PGC COMPLET ===")
             print(f"SRO: {sro}, Tronçon: {troncon}")
-            
-            # ÉTAPE 1: Exécution DQE PGC principal
-            print(f"\n1️⃣ ÉTAPE 1: Exécution DQE PGC...")
+            print("\nÉTAPE 1: Exécution DQE PGC...")
             query = "SELECT * FROM rip_avg_nge.dqe_pgc(%s, %s)"
             cursor.execute(query, (sro, troncon))
             raw_results = cursor.fetchall()
             
             print(f"Résultats bruts de la fonction: {len(raw_results)} lignes")
-            
-            # ÉTAPE 2: Récupération données REDEVANCE pour Excel
-            print("\n2️⃣ ÉTAPE 2: Récupération données REDEVANCE...")
+            print("\nÉTAPE 2: Récupération données REDEVANCE...")
             redevance_data = []
             try:
-                # CORRECTION: gc_exe.redevance_table() retourne une expression SQL, pas des données
-                print(f"📊 REDEVANCE: Appel de gc_exe.redevance_table('{sro}', '{troncon}')")
+                print(f" REDEVANCE: Appel de gc_exe.redevance_table('{sro}', '{troncon}')")
                 redevance_query = "SELECT gc_exe.redevance_table(%s, %s)"
                 cursor.execute(redevance_query, (sro, troncon))
                 redevance_result = cursor.fetchone()
                 
                 if redevance_result:
-                    # La fonction retourne une expression SQL du type "SELECT * FROM redevances_xxx"
                     redevance_sql_expression = redevance_result[0]  # Premier élément du tuple
-                    print(f"📊 Expression SQL reçue: {redevance_sql_expression}")
+                    print(f" Expression SQL reçue: {redevance_sql_expression}")
                     
                     if redevance_sql_expression and redevance_sql_expression.strip():
-                        # Exécuter l'expression SQL pour récupérer les vraies données
-                        print("📊 Exécution de la requête REDEVANCE...")
+                        print(" Exécution de la requête REDEVANCE...")
                         cursor.execute(redevance_sql_expression)
                         redevance_data = cursor.fetchall()
-                        print(f"✅ Données REDEVANCE récupérées: {len(redevance_data)} lignes")
-                        
-                        # Debug: Afficher les premières lignes pour vérifier
+                        print(f" Données REDEVANCE récupérées: {len(redevance_data)} lignes")
                         if redevance_data and len(redevance_data) > 0:
-                            print(f"📊 Aperçu colonnes REDEVANCE: {list(dict(redevance_data[0]).keys()) if redevance_data else 'Aucune'}")
+                            print(f" Aperçu colonnes REDEVANCE (original): {list(dict(redevance_data[0]).keys()) if redevance_data else 'Aucune'}")
+                            redevance_data = DatabaseOperations._reorganize_redevance_columns(redevance_data)
+                            print(f" Aperçu colonnes REDEVANCE (réorganisé): {list(dict(redevance_data[0]).keys()) if redevance_data else 'Aucune'}")
                     else:
-                        print("⚠️ Expression SQL REDEVANCE vide")
+                        print(" Expression SQL REDEVANCE vide")
                 else:
-                    print("⚠️ Aucune expression SQL REDEVANCE retournée")
+                    print(" Aucune expression SQL REDEVANCE retournée")
                     
             except Exception as e:
-                print(f"⚠️ Erreur récupération REDEVANCE: {str(e)}")
-                # Ne pas faire échouer le DQE PGC si la redevance échoue
-            
-            # TRAITEMENT DES RÉSULTATS DQE PGC (code existant)
-            # DEBUG: Afficher les premières lignes pour voir la structure
+                print(f" Erreur récupération REDEVANCE: {str(e)}")
             for i, row in enumerate(raw_results[:10]):
                 row_dict = dict(row)
                 print(f"Ligne {i+1}: {row_dict}")
@@ -180,8 +180,6 @@ class DatabaseOperations:
             results = []
             for i, row in enumerate(raw_results):
                 row_dict = dict(row)
-                
-                # CORRECTION: Essayer plusieurs variantes de clés possibles
                 designation = (row_dict.get("Désignation") or 
                               row_dict.get("designation") or 
                               row_dict.get("désignation") or "")
@@ -203,30 +201,20 @@ class DatabaseOperations:
                 print(f"  Unité: '{unite}'")
                 print(f"  Quantité: {quantite}")
                 print(f"  IDs: '{ids_str}'")
-                
-                # CORRECTION: Ne filtrer QUE les vraies lignes vides/en-têtes
                 if not designation or designation.strip() == "":
                     print(f"  -> IGNORÉ (désignation vide)")
                     continue
-                
-                # Ignorer les en-têtes spécifiques
                 if any(x in designation.lower() for x in [
                     "nom gc :", "désignation", "armoire de rue  -", 
                     "gc - tdr", "pose de poteaux", "fourniture des alvéoles"
                 ]):
                     print(f"  -> IGNORÉ (en-tête)")
                     continue
-                
-                # CORRECTION: Ne plus filtrer sur quantité == 0, laisser passer même les 0
-                # car certaines peuvent être légitimes
                 try:
                     quantite_num = float(quantite) if quantite is not None else 0
                 except (ValueError, TypeError):
                     print(f"  -> IGNORÉ (quantité invalide: {quantite})")
                     continue
-                
-                # CORRECTION: Ne plus exiger des IDs pour toutes les lignes
-                # Certaines lignes PGC peuvent être des totaux sans GIDs spécifiques
                 ids_list = []
                 if ids_str and str(ids_str).strip():
                     try:
@@ -234,9 +222,6 @@ class DatabaseOperations:
                         print(f"  -> IDs parsés: {len(ids_list)} éléments")
                     except ValueError as e:
                         print(f"  -> Erreur parsing IDs: {e}")
-                        # Ne pas ignorer, juste laisser la liste vide
-                
-                # CORRECTION: Accepter même sans IDs si quantité > 0
                 if quantite_num > 0 or ids_list:
                     result = DQEResult(
                         designation=designation.strip(),
@@ -245,7 +230,7 @@ class DatabaseOperations:
                         ids=ids_list
                     )
                     results.append(result)
-                    print(f"  -> ✅ AJOUTÉ AU RÉSULTAT")
+                    print(f"  ->  AJOUTÉ AU RÉSULTAT")
                 else:
                     print(f"  -> IGNORÉ (quantité=0 et pas d'IDs)")
             
@@ -253,26 +238,16 @@ class DatabaseOperations:
             print(f"Total résultats retenus: {len(results)}")
             for i, result in enumerate(results):
                 print(f"{i+1}. {result.designation} | {result.quantite} {result.unite} | {len(result.ids)} IDs")
-            
-            # STOCKAGE DES DONNÉES REDEVANCE DANS LES RÉSULTATS
-            # Stocker les données redevance dans un résultat spécial pour les récupérer plus tard
             if redevance_data:
-                # Conversion des données redevance en format compatible
                 redevance_converted = []
                 for row in redevance_data:
                     row_dict = dict(row)
                     redevance_converted.append(row_dict)
-                
-                # Ajouter les données redevance comme métadonnées au premier résultat
                 if results:
-                    # Créer un attribut spécial pour stocker les données redevance
                     results[0].redevance_data = redevance_converted
-                    print(f"📊 Données REDEVANCE attachées: {len(redevance_converted)} lignes")
+                    print(f" Données REDEVANCE attachées: {len(redevance_converted)} lignes")
             
             return results
-            
-        finally:
-            conn.close()
 
     @staticmethod
     def get_redevance_data_only(sro: str, troncon: str) -> List[Dict]:
@@ -280,7 +255,7 @@ class DatabaseOperations:
         Récupère seulement les données REDEVANCE sans refaire FUNCTION_UP_GEST
         Utilisé pour régénérer l'Excel après correction manuelle de cm_gest_do
         """
-        print(f"📊 RÉCUPÉRATION REDEVANCE SEULE pour {sro} / {troncon}")
+        print(f" RÉCUPÉRATION REDEVANCE SEULE pour {sro} / {troncon}")
         
         db_params = DatabaseOperations.get_db_connection_params()
         if not db_params:
@@ -289,7 +264,6 @@ class DatabaseOperations:
         redevance_data = []
         
         try:
-            # Utiliser exactement la même méthode de connexion que execute_dqe_pgc
             conn = psycopg2.connect(
                 host=db_params["host"],
                 port=db_params["port"],
@@ -297,48 +271,36 @@ class DatabaseOperations:
                 user=db_params["user"],
                 password=db_params["password"]
             )
-            
-            # Utiliser DictCursor comme dans execute_dqe_pgc pour obtenir des dictionnaires
             cursor = conn.cursor(cursor_factory=DictCursor)
-            print("✅ Connexion database établie pour récupération REDEVANCE")
-            
-            # Récupération données REDEVANCE SEULEMENT
-            print("📊 REDEVANCE: récupération des données actualisées...")
-            
-            # CORRECTION: gc_exe.redevance_table() retourne une expression SQL, pas des données
-            print(f"📊 REDEVANCE: Appel de gc_exe.redevance_table('{sro}', '{troncon}')")
+            print(" Connexion database établie pour récupération REDEVANCE")
+            print(" REDEVANCE: récupération des données actualisées...")
+            print(f" REDEVANCE: Appel de gc_exe.redevance_table('{sro}', '{troncon}')")
             redevance_query = "SELECT gc_exe.redevance_table(%s, %s)"
             cursor.execute(redevance_query, (sro, troncon))
             redevance_result = cursor.fetchone()
             
             if redevance_result:
-                # La fonction retourne une expression SQL du type "SELECT * FROM redevances_xxx"
                 redevance_sql_expression = redevance_result[0]  # Premier élément du tuple
-                print(f"📊 Expression SQL reçue: {redevance_sql_expression}")
+                print(f" Expression SQL reçue: {redevance_sql_expression}")
                 
                 if redevance_sql_expression and redevance_sql_expression.strip():
-                    # Exécuter l'expression SQL pour récupérer les vraies données
-                    print("📊 Exécution de la requête REDEVANCE...")
+                    print(" Exécution de la requête REDEVANCE...")
                     cursor.execute(redevance_sql_expression)
                     redevance_raw = cursor.fetchall()
-                    print(f"✅ Données REDEVANCE récupérées: {len(redevance_raw)} lignes")
-                    
-                    # Conversion des données redevance en format compatible (dictionnaires)
+                    print(f" Données REDEVANCE récupérées: {len(redevance_raw)} lignes")
                     for row in redevance_raw:
                         row_dict = dict(row)  # DictCursor permet cette conversion
                         redevance_data.append(row_dict)
-                    
-                    # Debug: Afficher les premières lignes pour vérifier
                     if redevance_data and len(redevance_data) > 0:
-                        print(f"📊 Aperçu colonnes REDEVANCE: {list(redevance_data[0].keys())}")
-                        print(f"📊 Première ligne exemple: {redevance_data[0] if redevance_data else 'Aucune'}")
+                        print(f" Aperçu colonnes REDEVANCE: {list(redevance_data[0].keys())}")
+                        print(f" Première ligne exemple: {redevance_data[0] if redevance_data else 'Aucune'}")
                 else:
-                    print("⚠️ Expression SQL REDEVANCE vide")
+                    print(" Expression SQL REDEVANCE vide")
             else:
-                print("⚠️ Aucune expression SQL REDEVANCE retournée")
+                print(" Aucune expression SQL REDEVANCE retournée")
                 
         except Exception as e:
-            print(f"💥 Erreur récupération REDEVANCE seule: {str(e)}")
+            print(f" Erreur récupération REDEVANCE seule: {str(e)}")
             import traceback
             traceback.print_exc()
             return []
@@ -347,11 +309,11 @@ class DatabaseOperations:
             try:
                 if 'conn' in locals():
                     conn.close()
-                    print("✅ Connexion database fermée")
+                    print(" Connexion database fermée")
             except:
                 pass
                 
-        print(f"📊 REDEVANCE finale récupérée: {len(redevance_data)} lignes")
+        print(f" REDEVANCE finale récupérée: {len(redevance_data)} lignes")
         return redevance_data
 
     @staticmethod
@@ -359,8 +321,8 @@ class DatabaseOperations:
         """
         Calcule les redevances en utilisant les données modifiées de la couche gestionnaire
         """
-        print(f"📊 CALCUL REDEVANCE avec données gestionnaire modifiées pour {sro} / {troncon}")
-        print(f"📊 Données gestionnaire modifiées: {len(modified_gestionnaire_data)} lignes")
+        print(f" CALCUL REDEVANCE avec données gestionnaire modifiées pour {sro} / {troncon}")
+        print(f" Données gestionnaire modifiées: {len(modified_gestionnaire_data)} lignes")
         
         db_params = DatabaseOperations.get_db_connection_params()
         if not db_params:
@@ -378,13 +340,9 @@ class DatabaseOperations:
             )
             
             cursor = conn.cursor(cursor_factory=DictCursor)
-            print("✅ Connexion database établie pour calcul redevance avec données modifiées")
-            
-            # Créer une table temporaire avec les données modifiées
+            print(" Connexion database établie pour calcul redevance avec données modifiées")
             temp_table_name = f"temp_gestionnaire_modified_{int(time.time())}"
-            print(f"📊 Création table temporaire: {temp_table_name}")
-            
-            # Créer la table temporaire
+            print(f" Création table temporaire: {temp_table_name}")
             create_temp_sql = f"""
             CREATE TEMP TABLE {temp_table_name} (
                 troncon_gid integer,
@@ -395,36 +353,86 @@ class DatabaseOperations:
                 distance_route_m numeric(10,2),
                 angle_parallelisme_deg numeric(10,2),
                 confiance_niveau varchar,
-                methode_attribution varchar
+                methode_attribution varchar,
+                nb_pot_ac integer
             )
             """
             cursor.execute(create_temp_sql)
-            print(f"✅ Table temporaire {temp_table_name} créée")
-            
-            # Insérer les données modifiées
+            print(f" Table temporaire {temp_table_name} créée")
             insert_sql = f"""
             INSERT INTO {temp_table_name} 
             (troncon_gid, segment_id, cm_gest_do, cm_compo, long, distance_route_m, 
-             angle_parallelisme_deg, confiance_niveau, methode_attribution)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             angle_parallelisme_deg, confiance_niveau, methode_attribution, nb_pot_ac)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            
             for row in modified_gestionnaire_data:
+                troncon_gid = row.get('troncon_gid')
+                if troncon_gid == '' or troncon_gid is None:
+                    troncon_gid = None
+                else:
+                    try:
+                        troncon_gid = int(troncon_gid)
+                    except (ValueError, TypeError):
+                        troncon_gid = None
+                
+                segment_id = row.get('segment_id')
+                if segment_id == '' or segment_id is None:
+                    segment_id = None
+                else:
+                    try:
+                        segment_id = int(segment_id)
+                    except (ValueError, TypeError):
+                        segment_id = None
+                long_val = row.get('long')
+                if long_val == '' or long_val is None:
+                    long_val = None
+                else:
+                    try:
+                        long_val = float(long_val)
+                    except (ValueError, TypeError):
+                        long_val = None
+                
+                distance_route_m = row.get('distance_route_m')
+                if distance_route_m == '' or distance_route_m is None:
+                    distance_route_m = None
+                else:
+                    try:
+                        distance_route_m = float(distance_route_m)
+                    except (ValueError, TypeError):
+                        distance_route_m = None
+                
+                angle_parallelisme_deg = row.get('angle_parallelisme_deg')
+                if angle_parallelisme_deg == '' or angle_parallelisme_deg is None:
+                    angle_parallelisme_deg = None
+                else:
+                    try:
+                        angle_parallelisme_deg = float(angle_parallelisme_deg)
+                    except (ValueError, TypeError):
+                        angle_parallelisme_deg = None
+                
+                nb_pot_ac = row.get('nb_pot_ac')
+                if nb_pot_ac == '' or nb_pot_ac is None:
+                    nb_pot_ac = None
+                else:
+                    try:
+                        nb_pot_ac = int(nb_pot_ac)
+                    except (ValueError, TypeError):
+                        nb_pot_ac = None
+                
                 cursor.execute(insert_sql, (
-                    row.get('troncon_gid'),
-                    row.get('segment_id'),
+                    troncon_gid,
+                    segment_id,
                     row.get('cm_gest_do'),
                     row.get('cm_compo'),
-                    row.get('long'),
-                    row.get('distance_route_m'),
-                    row.get('angle_parallelisme_deg'),
+                    long_val,
+                    distance_route_m,
+                    angle_parallelisme_deg,
                     row.get('confiance_niveau'),
-                    row.get('methode_attribution')
+                    row.get('methode_attribution'),
+                    nb_pot_ac
                 ))
             
-            print(f"✅ {len(modified_gestionnaire_data)} lignes insérées dans {temp_table_name}")
-            
-            # D'abord obtenir toutes les compositions uniques pour créer les colonnes dynamiques
+            print(f" {len(modified_gestionnaire_data)} lignes insérées dans {temp_table_name}")
             compositions_sql = f"""
             SELECT DISTINCT cm_compo 
             FROM {temp_table_name}
@@ -434,62 +442,93 @@ class DatabaseOperations:
             
             cursor.execute(compositions_sql)
             compositions = [row[0] for row in cursor.fetchall()]
-            print(f"📊 Compositions trouvées: {compositions}")
-            
-            # Générer les colonnes SQL dynamiquement
+            print(f" Compositions trouvées: {compositions}")
             colonnes_sql = ', '.join([
                 f'SUM(CASE WHEN cm_compo = \'{compo}\' THEN quantite ELSE 0 END) as "{compo}"' 
                 for compo in compositions
             ])
+            cursor.execute(f"SELECT COUNT(*) FROM {temp_table_name} WHERE nb_pot_ac > 0")
+            has_poteaux = cursor.fetchone()[0] > 0
+            colonnes_finales = []
+            if compositions:
+                colonnes_finales.extend([
+                    f'SUM(CASE WHEN type_equipement = \'{compo}\' THEN quantite ELSE 0 END) as "{compo}"' 
+                    for compo in compositions
+                ])
+            if has_poteaux:
+                colonnes_finales.append('SUM(CASE WHEN type_equipement = \'Poteaux\' THEN quantite ELSE 0 END) as "Poteaux_nb_unites"')
             
-            # Maintenant calculer les redevances en format tabulaire
-            # Adaptation de la logique de gc_exe.redevance_table() mais avec les données modifiées
+            colonnes_finales_sql = ', '.join(colonnes_finales)
+            print(f" Infrastructure: {'Mixte' if has_poteaux and compositions else 'Aérienne' if has_poteaux else 'Souterraine'}")
+            quote_char = '\"'
+            print(f" Colonnes générées: {[col.split(' as ')[1].replace(quote_char, '') for col in colonnes_finales]}")
+            print(f" ORDRE: Alvéoles en ml d'abord, puis poteaux en unités séparées")
+            
             redevance_sql = f"""
             WITH extraction_alveoles AS (
                 SELECT 
                     cm_gest_do as concessionnaire_voirie,
-                    cm_compo,
+                    cm_compo as type_equipement,
                     CASE 
                         WHEN cm_compo LIKE '%+%' THEN 
-                            CAST(split_part(cm_compo, '+', 1) AS INTEGER) + 
-                            CAST(regexp_replace(split_part(split_part(cm_compo, '+', 2), ' ', 1), '[^0-9]', '', 'g') AS INTEGER)
+                            COALESCE(NULLIF(split_part(cm_compo, '+', 1), '')::INTEGER, 0) + 
+                            COALESCE(NULLIF(regexp_replace(split_part(split_part(cm_compo, '+', 2), ' ', 1), '[^0-9]', '', 'g'), '')::INTEGER, 0)
                         ELSE 
-                            CAST(regexp_replace(split_part(cm_compo, ' ', 1), '[^0-9]', '', 'g') AS INTEGER)
+                            COALESCE(NULLIF(regexp_replace(split_part(cm_compo, ' ', 1), '[^0-9]', '', 'g'), '')::INTEGER, 1)
                     END as nb_alveoles,
                     long as long_plan
                 FROM {temp_table_name}
                 WHERE cm_compo IS NOT NULL AND cm_gest_do IS NOT NULL
+                AND long IS NOT NULL AND long > 0
             ),
-            totaux_par_type AS (
+            extraction_poteaux AS (
+                SELECT 
+                    cm_gest_do as concessionnaire_voirie,
+                    'Poteaux' as type_equipement,
+                    1 as nb_equipements,
+                    nb_pot_ac::NUMERIC as quantite_totale
+                FROM {temp_table_name}
+                WHERE cm_gest_do IS NOT NULL AND nb_pot_ac IS NOT NULL AND nb_pot_ac > 0
+            ),
+            totaux_alveoles AS (
                 SELECT 
                     concessionnaire_voirie,
-                    cm_compo,
+                    type_equipement,
                     ROUND(SUM(nb_alveoles * long_plan)::NUMERIC, 2) as quantite
                 FROM extraction_alveoles
-                GROUP BY concessionnaire_voirie, cm_compo
+                GROUP BY concessionnaire_voirie, type_equipement
+            ),
+            totaux_poteaux AS (
+                SELECT 
+                    concessionnaire_voirie,
+                    type_equipement,
+                    SUM(quantite_totale) as quantite
+                FROM extraction_poteaux
+                GROUP BY concessionnaire_voirie, type_equipement
+            ),
+            totaux_combines AS (
+                SELECT * FROM totaux_alveoles
+                UNION ALL
+                SELECT * FROM totaux_poteaux
             )
-            SELECT concessionnaire_voirie, {colonnes_sql}
-            FROM totaux_par_type
+            SELECT concessionnaire_voirie, {colonnes_finales_sql}
+            FROM totaux_combines
             GROUP BY concessionnaire_voirie
             ORDER BY concessionnaire_voirie
             """
             
             cursor.execute(redevance_sql)
             redevance_raw = cursor.fetchall()
-            print(f"✅ Redevances calculées avec données modifiées: {len(redevance_raw)} lignes")
-            
-            # Convertir en format compatible
+            print(f" Redevances calculées avec données modifiées: {len(redevance_raw)} lignes")
             for row in redevance_raw:
                 row_dict = dict(row)
                 redevance_data.append(row_dict)
-            
-            # Debug
             if redevance_data:
-                print(f"📊 Aperçu colonnes REDEVANCE modifiées: {list(redevance_data[0].keys())}")
-                print(f"📊 Première ligne exemple: {redevance_data[0] if redevance_data else 'Aucune'}")
+                print(f" Aperçu colonnes REDEVANCE modifiées: {list(redevance_data[0].keys())}")
+                print(f" Première ligne exemple: {redevance_data[0]}")
                 
         except Exception as e:
-            print(f"💥 Erreur calcul redevance avec données modifiées: {str(e)}")
+            print(f" Erreur calcul redevance avec données modifiées: {str(e)}")
             import traceback
             traceback.print_exc()
             return []
@@ -498,37 +537,34 @@ class DatabaseOperations:
             try:
                 if 'conn' in locals():
                     conn.close()
-                    print("✅ Connexion database fermée")
+                    print(" Connexion database fermée")
             except:
                 pass
                 
-        print(f"📊 REDEVANCE finale (modifiée) calculée: {len(redevance_data)} lignes")
+        print(f" REDEVANCE finale (modifiée) calculée: {len(redevance_data)} lignes")
         return redevance_data
 
     @staticmethod
     def get_redevance_from_results(sro, troncon, results):
         """Récupère les données de redevance depuis les résultats DQE PGC existants"""
         try:
-            print(f"📊 Récupération redevances en mode direct pour SRO {sro}, tronçon {troncon}")
-            
-            # Chercher le premier résultat contenant des données de redevance
+            print(f" Récupération redevances en mode direct pour SRO {sro}, tronçon {troncon}")
             redevance_data = []
             
             for result in results:
                 if hasattr(result, 'redevance_data') and result.redevance_data:
                     redevance_data = result.redevance_data
-                    print(f"✅ Données redevance trouvées dans résultat '{result.designation}': {len(redevance_data)} lignes")
+                    print(f" Données redevance trouvées dans résultat '{result.designation}': {len(redevance_data)} lignes")
                     break
             
             if not redevance_data:
-                # Si pas de données redevance dans les résultats, calculer depuis la base
-                print("⚠️ Aucune donnée redevance trouvée dans les résultats, calcul depuis base...")
+                print(" Aucune donnée redevance trouvée dans les résultats, calcul depuis base...")
                 redevance_data = DatabaseOperations.get_redevance_data_only(sro, troncon)
             
             return redevance_data
             
         except Exception as e:
-            print(f"❌ Erreur lors de la récupération des données redevance: {str(e)}")
+            print(f" Erreur lors de la récupération des données redevance: {str(e)}")
             import traceback
             traceback.print_exc()
             return []
