@@ -5,9 +5,9 @@ qgisMaximumVersion=3.45.0
 description=Plugin de génération de DQE (Détail Quantitatif Estimatif) pour le projet de Auvergne Numérique
 long_description=Ce plugin permet la génération automatique de DQE pour le projet de Auvergne Numérique à partir d'un code SRO. Il supporte trois modes : DQE PRO (quantitatifs projet), DQE EXE (quantitatifs exécution avec génie civil), et DQE PGC (attribution gestionnaire avec corrections manuelles). Génération automatique d'Excel avec templates spécialisés et chargement des couches QGIS organisées.
 
-version=3.1.0
+version=3.4.0
 author=DEVTEM NGE
-email=yadda@ext.nge.com
+email=yadda@nge-es.com
 
 about=Plugin développé pour automatiser la génération de DQE dans le cadre de projet de Auvergne Numérique. Interface intuitive avec validation automatique des codes SRO et gestion intelligente des templates Excel.
 
@@ -20,5 +20,21 @@ repository=
 experimental=False
 deprecated=False
 
-changelog=3.28.0 - Amélioration de l'interface utilisateur et correction de bugs
+changelog=3.4.0 - DQE Recover + Modes Travaux RAN + Améliorations majeures
+    • Onglet DQE Recover : récupération archives depuis dqe.dqejson
+    • Aperçu HTML des DQE archivés avec watermark
+    • Modes calcul blocage_ran : Standard (TE/DE), Travaux (TT/DT), Blocage (TB/DB)
+    • Paramètre p_blocage dans dqe2.sql pour filtrage intelligent
+    • Correction erreur "wrapped C/C++ object deleted" (QgsVectorLayer)
+    • Récupération couches directement depuis QgsProject.instance()
+    • Compatibilité Qt améliorée (classe QtCompatibility)
+    • Sauvegarde Excel robuste contre erreurs openpyxl deprecated
+    • Nettoyage code : style professionnel, commentaires concis
+    • Correction comptage chambres L3C/L3T (GROUP BY inf_mat)
+    3.2.0 - Corrections majeures fonctions PostgreSQL + Python pour DQE PGC
+    • Gestion complète infrastructures mixtes (aérien + souterrain)
+    • Calcul redevances avec poteaux RAUV et alvéoles séparés
+    • Support nb_pot_ac pour infrastructures aériennes
+    • Évitement mélange unités (poteaux/mètres linéaires) dans totaux Excel
+    • Corrections fonctions gc_exe.gestionnaire() et gc_exe.redevance_table()
     3.0.0 - Version initiale avec support DQE PRO, EXE et PGC
