@@ -1159,7 +1159,7 @@ class DQEChargeur(QDialog):
         self._update_db_status()
         header_layout.addWidget(self.db_status_label)
         
-        version_label = QLabel("v3.3.0")
+        version_label = QLabel("v3.4.0")
         version_label.setStyleSheet("color: #666; font-style: italic;")
         header_layout.addWidget(version_label)
         
@@ -1213,50 +1213,62 @@ class DQEChargeur(QDialog):
     def show_help(self):
         help_text = """
         <style>
-        h2 { color: #2E7D32; margin-bottom: 15px; }
-        h3 { color: #1565C0; margin-top: 20px; margin-bottom: 10px; }
-        .module { background: #F5F5F5; padding: 10px; margin: 8px 0; border-radius: 4px; }
-        .param { color: #D84315; font-weight: 500; }
-        .desc { color: #424242; margin-left: 10px; }
-        .feature { color: #2E7D32; }
-        .new { color: #FF6F00; font-weight: 500; }
+        body { font-family: 'Segoe UI', sans-serif; }
+        h2 { color: #1a365d; margin-bottom: 12px; font-size: 16px; border-bottom: 2px solid #3182ce; padding-bottom: 6px; }
+        h3 { color: #2c5282; margin: 14px 0 8px 0; font-size: 13px; }
+        .module { background: linear-gradient(135deg, #f7fafc, #edf2f7); padding: 12px; margin: 10px 0; border-radius: 6px; border-left: 3px solid #3182ce; }
+        .module.pro { border-left-color: #805ad5; }
+        .module.exe { border-left-color: #dd6b20; }
+        .module.pgc { border-left-color: #38a169; }
+        .module.recover { border-left-color: #3182ce; }
+        .param { color: #c53030; font-weight: 600; }
+        .desc { color: #4a5568; }
+        .feature { color: #276749; }
+        .new { color: #c05621; font-weight: 600; font-size: 11px; }
+        .version { background: #ebf8ff; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 11px; color: #2b6cb0; }
+        ul { margin: 4px 0; padding-left: 16px; }
+        li { margin: 2px 0; font-size: 12px; }
         </style>
         
-        <h2>Guide d'utilisation - Plugin DQE v3.2.0</h2>
+        <h2>DQE Chargeur - Guide v3.4.0</h2>
         
-        <div class="module">
-        <h3>DQE PRO - Quantitatifs Projet</h3>
-        • <span class="param">SRO</span> : <span class="desc">Code au format XXX/XXX/XXX/XXX</span><br>
-        • <span class="param">Type</span> : <span class="desc">Transport ou Distribution</span><br>
-        • <span class="feature">Génère les quantitatifs projet</span>
+        <div class="version">QGIS 3.28+ | Auvergne Numerique | 4 modules</div>
+        
+        <div class="module pro">
+        <h3 style="color: #805ad5;">DQE PRO</h3>
+        <ul>
+        <li><span class="param">SRO</span> : Code SRO avec autocompletion</li>
+        <li><span class="param">Type</span> : Transport (TP) ou Distribution (DP)</li>
+        <li><span class="feature">Cables, BPE, PA, PBO avec geometries</span></li>
+        </ul>
         </div>
         
-        <div class="module">
-        <h3>DQE EXE - Quantitatifs Exécution</h3>
-        • <span class="param">SRO</span> : <span class="desc">Code au format XXX/XXX/XXX/XXX</span><br>
-        • <span class="param">Type</span> : <span class="desc">Transport ou Distribution</span><br>
-        • <span class="feature">Quantitatifs exécution + génie civil</span><br>
-        • <span class="feature">Intègre tranchées, chambres, poteaux, alvéoles</span>
+        <div class="module exe">
+        <h3 style="color: #dd6b20;">DQE EXE</h3>
+        <ul>
+        <li><span class="param">Mode</span> : Standard (TE/DE), Travaux (TT/DT), Blocage (TB/DB)</li>
+        <li><span class="feature">Projet + Genie Civil (tranchees, chambres, poteaux)</span></li>
+        <li><span class="new">Filtrage blocage_ran pour separation travaux</span></li>
+        </ul>
         </div>
         
-        <div class="module">
-        <h3>DQE PGC - Attribution Gestionnaire</h3>
-        • <span class="param">SRO</span> : <span class="desc">Code pour sélectionner les tronçons</span><br>
-        • <span class="param">Tronçon</span> : <span class="desc">Sélection du tronçon à traiter</span><br>
-        • <span class="param">Mode gestionnaire</span> : <span class="desc">Corrections manuelles possibles</span><br>
-        • <span class="param">Mode direct</span> : <span class="desc">Traitement sans intervention</span><br>
-        <br>
-        <span class="new">Améliorations v3.2.0 :</span><br>
-        • <span class="feature">Support infrastructures mixtes</span><br>
-        • <span class="feature">Gestion poteaux aériens</span><br>
-        • <span class="feature">Calculs redevances corrigés</span>
+        <div class="module pgc">
+        <h3 style="color: #38a169;">DQE PGC</h3>
+        <ul>
+        <li><span class="param">Troncon</span> : Selection par GC</li>
+        <li><span class="param">Mode Gestionnaire</span> : Corrections manuelles + regeneration</li>
+        <li><span class="param">Mode Direct</span> : Export automatique</li>
+        <li><span class="feature">Algorithme proximite + redevances</span></li>
+        </ul>
         </div>
         
-        <div class="module">
-        <h3>Fonctionnalités</h3>
-        • <span class="feature">Export Excel avec templates</span><br>
-        • <span class="feature">Chargement couches QGIS</span><br>
-        • <span class="feature">Sauvegarde en base</span>
+        <div class="module recover">
+        <h3 style="color: #3182ce;">DQE RECOVER</h3>
+        <ul>
+        <li><span class="feature">Recherche DQE archives dans dqe.dqejson</span></li>
+        <li><span class="feature">Apercu HTML avec details</span></li>
+        <li><span class="new">Reconstruction couches et Excel</span></li>
+        </ul>
         </div>
         """
         
