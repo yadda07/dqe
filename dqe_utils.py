@@ -22,6 +22,17 @@ from qgis.core import QgsSettings, QgsDataSourceUri, QgsMessageLog, Qgis
 from qgis.utils import iface
 
 
+# Constantes messages d'erreur centralisés
+class ErrorMessages:
+    DB_PARAMS_UNAVAILABLE = "Paramètres DB non disponibles"
+    NO_SRO_SELECTED = "Veuillez sélectionner un SRO"
+    NO_DQE_RESULTS = "Aucun résultat DQE trouvé"
+    LAYER_LOAD_ERROR = "Erreur chargement couche"
+    NO_LAYERS_TO_VALIDATE = "Aucune couche à valider"
+    VALIDATION_ERROR = "Erreur lors de la validation"
+    EXCEL_GENERATION_ERROR = "Erreur génération Excel"
+
+
 @dataclass
 class DatabaseConfig:
     """Configuration de base de données simple et efficace"""
@@ -63,7 +74,6 @@ class SimpleLogger:
     def _log(self, level: str, message: str):
         """Log simple et sécurisé"""
         try:
-            # Nettoyer le message
             clean_msg = str(message).replace("/", "-").replace("\\", "-")
             
             if self.use_qgis and hasattr(QgsMessageLog, 'logMessage'):
@@ -185,8 +195,6 @@ class ConfigurationManager:
         """Récupère config DB - VERSION FLEXIBLE"""
         
         self.logger.info("=== DÉBUT RECHERCHE CONFIGURATION DB ===")
-        
-        # 1. Essai toutes les connexions QGIS PostgreSQL
         self.logger.info("Étape 1: Recherche connexions QGIS PostgreSQL")
         try:
             config = self._get_any_qgis_connection()
@@ -197,8 +205,6 @@ class ConfigurationManager:
                 self.logger.info("❌ Aucune connexion QGIS valide")
         except Exception as e:
             self.logger.warning(f"❌ Échec config QGIS: {e}")
-        
-        # 2. Essai fichier JSON
         self.logger.info("Étape 2: Recherche fichier JSON")
         try:
             config = self._get_json_config()
@@ -209,8 +215,6 @@ class ConfigurationManager:
                 self.logger.info("❌ Aucune config JSON valide")
         except Exception as e:
             self.logger.warning(f"❌ Échec config JSON: {e}")
-        
-        # 3. Essai variables d'environnement
         self.logger.info("Étape 3: Recherche variables ENV")
         try:
             config = self._get_env_config()
@@ -221,8 +225,6 @@ class ConfigurationManager:
                 self.logger.info("❌ Aucune config ENV valide")
         except Exception as e:
             self.logger.warning(f"❌ Échec config ENV: {e}")
-        
-        # 4. Interface utilisateur pour saisir la connexion
         self.logger.info("Étape 4: Affichage interface utilisateur")
         try:
             config = self._get_user_connection()
@@ -258,16 +260,11 @@ class ConfigurationManager:
                     'password': settings.value("password", "")
                 }
                 settings.endGroup()
-                
-                # Vérifier que tous les champs sont présents
                 if not all(config_data.values()):
                     self.logger.warning(f"Connexion {conn} incomplète: {config_data}")
                     continue
-                
-                # Tester réellement la connexion
                 try:
                     test_config = DatabaseConfig(**config_data)
-                    # Test de connexion rapide
                     import psycopg2
                     conn_test = psycopg2.connect(**test_config.to_dict())
                     conn_test.close()
@@ -350,8 +347,6 @@ class ConfigurationManager:
         try:
             from .connection_dialog import ConnectionDialog
             from qgis.utils import iface
-            
-            # Créer et afficher le dialog
             dialog = ConnectionDialog(parent=iface.mainWindow() if iface else None)
             
             if dialog.exec_() == dialog.Accepted:
@@ -384,10 +379,7 @@ class ValidationUtils:
             return False, "SRO vide"
         
         sro = sro.strip()
-        
-        # Vérifier si le pool DB est disponible
         if not self.db_manager._connection_pool:
-            # Pool non initialisé - validation format seulement
             if self._validate_sro_format(sro):
                 return True, "SRO accepté (format valide - base non connectée)"
             else:
@@ -405,8 +397,6 @@ class ValidationUtils:
             
         except Exception as e:
             error_msg = str(e)
-            
-            # Si erreur de connexion, on se rabat sur la validation format
             if any(x in error_msg.lower() for x in ["pool", "connection", "timeout", "connexion"]):
                 if self._validate_sro_format(sro):
                     return True, f"SRO accepté (format valide - erreur DB: {error_msg[:30]}...)"
@@ -417,7 +407,6 @@ class ValidationUtils:
     
     def _validate_sro_format(self, sro: str) -> bool:
         """Valide le format SRO sans base de données"""
-        # Patterns pour différents formats SRO
         patterns = [
             r'^\d+/[A-Za-z0-9]+/[A-Za-z0-9]+/\d+$',  # 63437/G2B/PMZ/74316
             r'^\d+/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+$',  # Format alternatif
@@ -484,13 +473,9 @@ def cleanup_dqe_system():
     """Nettoie système DQE"""
     logger = SimpleLogger()
     try:
-        # Nettoyage simple
         logger.info("Système DQE nettoyé")
     except Exception as e:
         logger.error("Erreur nettoyage", exception=e)
-
-
-# Décorateurs SIMPLIFIÉS
 def retry_on_db_error(max_retries: int = 2):
     """Retry simple pour DB"""
     def decorator(func):
@@ -525,18 +510,47 @@ def log_execution_time(func):
             SimpleLogger().error(f"{func.__name__} échec après {duration:.2f}s", exception=e)
             raise
     return wrapper
-
-
-# Instances globales SIMPLIFIÉES
+class QtCompatibility:
+    """Utilitaires pour assurer la compatibilité entre toutes les versions de Qt/PyQt5"""
+    
+    @staticmethod
+    def set_rich_text_format(message_box):
+        """Définit le format RichText de manière compatible avec toutes les versions Qt"""
+        try:
+            from PyQt5.QtCore import Qt
+            message_box.setTextFormat(Qt.RichText)
+            return True
+        except (AttributeError, ImportError):
+            try:
+                from qgis.PyQt.QtCore import Qt
+                message_box.setTextFormat(Qt.RichText)
+                return True
+            except (AttributeError, ImportError):
+                try:
+                    message_box.setTextFormat(1)  # RichText = 1 dans Qt
+                    return True
+                except:
+                    return False
+    
+    @staticmethod
+    def get_message_box_accepted():
+        """Retourne la constante QMessageBox.Accepted de manière compatible"""
+        try:
+            from PyQt5.QtWidgets import QMessageBox
+            return QMessageBox.Accepted
+        except (AttributeError, ImportError):
+            try:
+                from qgis.PyQt.QtWidgets import QMessageBox
+                return QMessageBox.Accepted
+            except (AttributeError, ImportError):
+                return 1  # QMessageBox.Accepted = 1
 _db_manager = DatabaseManager()
 _config_manager = ConfigurationManager()
 _validator = ValidationUtils()
 _logger = SimpleLogger()
-
-# Export
 __all__ = [
     'DatabaseManager', 'ConfigurationManager', 'ValidationUtils', 'SimpleLogger',
-    'DatabaseConfig', 'FileUtils', 'initialize_dqe_system', 'cleanup_dqe_system',
+    'DatabaseConfig', 'FileUtils', 'QtCompatibility', 'initialize_dqe_system', 'cleanup_dqe_system',
     'retry_on_db_error', 'log_execution_time',
     '_db_manager', '_config_manager', '_validator', '_logger'
 ]

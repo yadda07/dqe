@@ -60,8 +60,6 @@ class ProgressWidget(QWidget):
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
-        # Barre de progression avec texte de pourcentage
         progress_layout = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -69,8 +67,6 @@ class ProgressWidget(QWidget):
         self.progress_bar.setMaximum(100)
         self.progress_bar.setTextVisible(True)
         progress_layout.addWidget(self.progress_bar)
-        
-        # Bouton d'annulation
         self.cancel_button = QPushButton("Annuler")
         self.cancel_button.setVisible(False)
         self.cancel_button.clicked.connect(self.cancel_operation)
@@ -108,6 +104,25 @@ class ProgressWidget(QWidget):
             self.progress_cancelled.emit()
             self.status_label.show_warning("Annulation en cours...")
             self.cancel_button.setEnabled(False)
+    
+    def smooth_progress_to(self, current_progress: float, target_value: int, status: str) -> float:
+        """Fait évoluer la progression en douceur vers une valeur cible
+        Retourne la nouvelle valeur de current_progress
+        """
+        import time
+        from qgis.PyQt.QtWidgets import QApplication
+        
+        steps = max(1, int((target_value - current_progress) / 2))
+        for i in range(steps):
+            remaining = steps - i
+            if remaining > 0 and current_progress < target_value:
+                current_progress += (target_value - current_progress) / remaining
+                self.update_progress(int(current_progress), status)
+                QApplication.processEvents()
+                time.sleep(0.05)
+        current_progress = target_value
+        self.update_progress(int(current_progress), status)
+        return current_progress
 
 
 class SROComboBox(QComboBox):
@@ -121,29 +136,20 @@ class SROComboBox(QComboBox):
         """Charge la liste des SRO avec autocomplétion"""
         try:
             if _db_manager and _db_manager._connection_pool:
-                # Requête exacte demandée par l'utilisateur
                 query = "SELECT sro FROM rip_avg_nge.za_sro"
                 
                 print(f"Chargement SRO avec requête: {query}")
                 results = _db_manager.execute_query(query)
                 self.sro_list = [row[0] for row in results if row[0] and str(row[0]).strip()]
-                
-                # Configuration optimisée de l'autocomplétion
                 model = QStringListModel(self.sro_list)
                 completer = QCompleter()
                 completer.setModel(model)
-                
-                # Configuration pour afficher le popup
                 completer.setCaseSensitivity(Qt.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchContains)  # Recherche partielle
                 completer.setCompletionMode(QCompleter.PopupCompletion)  # Mode popup
                 completer.setMaxVisibleItems(10)  # Maximum 10 éléments visibles
-                
-                # Appliquer le completer au champ éditable
                 line_edit = self.lineEdit()
                 line_edit.setCompleter(completer)
-                
-                # Forcer l'affichage du popup dès qu'on tape
                 line_edit.textChanged.connect(lambda text: self._show_completions(text, completer))
                 
                 print(f" Liste SRO chargée: {len(self.sro_list)} éléments")
@@ -159,25 +165,18 @@ class SROComboBox(QComboBox):
             
             if _logger:
                 _logger.error("Erreur chargement SRO", exception=e)
-            
-            # En cas d'erreur, utiliser une liste vide
             self.sro_list = []
     
     def _show_completions(self, text: str, completer: QCompleter):
         """Force l'affichage des suggestions quand on tape"""
         if len(text) >= 1:  # Afficher dès 1 caractère
-            # Filtrer les SRO qui contiennent le texte
             matching_sros = [sro for sro in self.sro_list if text.upper() in sro.upper()]
             
             if matching_sros:
                 print(f" Recherche '{text}': {len(matching_sros)} SRO trouvés")
                 print(f"Exemples: {', '.join(matching_sros[:3])}{'...' if len(matching_sros) > 3 else ''}")
-                
-                # Mettre à jour le modèle avec les résultats filtrés
                 new_model = QStringListModel(matching_sros)
                 completer.setModel(new_model)
-                
-                # Forcer l'affichage du popup
                 if not completer.popup().isVisible():
                     completer.complete()
             else:

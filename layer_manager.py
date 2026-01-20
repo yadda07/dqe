@@ -9,10 +9,13 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
+import re
 import psycopg2
+from psycopg2 import sql
 from qgis.core import (
-    QgsDataSourceUri, QgsProject, QgsVectorLayer
+    QgsDataSourceUri, QgsProject, QgsVectorLayer, QgsField, QgsFields, QgsFeature, QgsGeometry
 )
+from qgis.PyQt.QtCore import QVariant
 
 from .database_operations import DatabaseOperations
 
@@ -25,6 +28,28 @@ except ImportError:
 
 
 class LayerManager:
+    @staticmethod
+    def create_compatible_field(name: str, field_type, type_name: str = None):
+        """
+        Crée un QgsField compatible avec différentes versions de QGIS
+        """
+        try:
+            field = QgsField()
+            field.setName(name)
+            field.setType(field_type)
+            if type_name:
+                field.setTypeName(type_name)
+            return field
+        except:
+            try:
+                from qgis.PyQt.QtCore import QVariant
+                if type_name:
+                    return QgsField(name, field_type, type_name)
+                else:
+                    return QgsField(name, field_type)
+            except:
+                return QgsField(name, field_type)
+    
     @staticmethod
     def create_layer_group(name: str):
         root = QgsProject.instance().layerTreeRoot()
@@ -80,26 +105,18 @@ class LayerManager:
         designation = designation.lower()
         
         print(f"Détection table PGC pour: '{designation}'")
-        
-        # Chambres
         if any(x in designation for x in ["pose de chambre", "chambre l"]):
             print("  -> Table PGC: gc_exe.infra_pt_chb")
             return "gc_exe.infra_pt_chb"
-        
-        # Poteaux
         elif any(x in designation for x in ["pose poteau", "poteau rauv"]):
             print("  -> Table PGC: gc_exe.infra_pt_pot")
             return "gc_exe.infra_pt_pot"
-        
-        # Tranchées et travaux de terrassement (le plus courant)
         elif any(x in designation for x in [
             "tranchée", "micro tranchée", "forage dirigé", "encorbellement",
             "pvc ", "pehd", "alvéole"
         ]):
             print("  -> Table PGC: gc_exe.t_cheminement")
             return "gc_exe.t_cheminement"
-        
-        # Par défaut pour PGC
         else:
             print("  -> Table PGC par défaut: gc_exe.t_cheminement")
             return "gc_exe.t_cheminement"
@@ -110,8 +127,6 @@ class LayerManager:
         designation = designation.lower()
         
         print(f"Détection de table pour: '{designation}'")
-        
-        # Tables EXE spécifiques (génie civil)
         if any(x in designation for x in ["tranchée", "micro tranchée", "forage dirigé", "encorbellement"]):
             print("  -> Détecté comme GC EXE (cheminement)")
             return "gc_exe.t_cheminement"
@@ -124,31 +139,21 @@ class LayerManager:
         elif any(x in designation for x in ["pvc ", "pehd"]):
             print("  -> Détecté comme GC EXE (alvéoles)")
             return "gc_exe.t_cheminement"
-        
-        # Tables PRO/EXE - BPE et équipements
         elif any(x in designation for x in ["bpe", "pa ", "pa)", "pbo", "f&p bpe", "f&p pa", "f&p de pbo"]):
             print("  -> Détecté comme BPE/PA/PBO")
             return "rip_avg_nge.bpe"
         elif "sro" in designation:
             print("  -> Détecté comme SRO")
             return "rip_avg_nge.bpe"
-        
-        # Tables câbles et fibres optiques
         elif any(x in designation for x in ["cable", "câble", "fibre", "fo ", "fourniture et pose de câble"]):
             print("  -> Détecté comme câble")
             return "rip_avg_nge.cables"
-        
-        # Tables prises et raccordements
         elif any(x in designation for x in ["prise", "dtr", "rad", "nbre de prises"]):
             print("  -> Détecté comme Prise")
             return "rbal.rbal_auvergne"
-        
-        # Tables génie civil PRO
         elif any(x in designation for x in ["gc", "génie civil", "cheminement", "lineaire", "infra"]):
             print("  -> Détecté comme GC/Cheminement PRO")
             return "rip_avg_nge.t_cheminement"
-        
-        # Par défaut pour les câbles
         else:
             print("  -> Type non reconnu, utilisation de cables par défaut")
             return "rip_avg_nge.cables"
@@ -176,8 +181,6 @@ class LayerManager:
             
             schema, table = table_name.split(".", 1) if "." in table_name else ("public", table_name)
             print(f"        Schéma: {schema}, Table: {table}")
-            
-            # Filtre simple avec gid IN (...)
             ids_joined = ",".join(gids_list)
             sql_filter = f"gid IN ({ids_joined})"
             print(f"        Filtre SQL: {sql_filter[:100]}{'...' if len(sql_filter) > 100 else ''}")
@@ -213,22 +216,13 @@ class LayerManager:
     def load_gestionnaire_layer(sro, troncon, layer_group=None):
         """Charge la table gestionnaire en tant que couche QGIS pour permettre les corrections manuelles"""
         try:
-            print(f"📊 Chargement couche gestionnaire pour SRO: {sro}, Tronçon: {troncon}")
-            
-            # Obtenir l'URI de connexion au début
+            print(f"Chargement couche gestionnaire pour SRO: {sro}, Tronçon: {troncon}")
             uri = LayerManager.get_db_connection_string()
             if not uri:
-                print("❌ ÉCHEC: URI de connexion non disponible")
+                print("ÉCHEC: URI de connexion non disponible")
                 return None
             
-            # APPROCHE EXPERTE: Couche mémoire QGIS avec données SQL
-            import psycopg2
-            from qgis.core import QgsVectorLayer, QgsFeature, QgsGeometry, QgsField, QgsFields
-            from qgis.PyQt.QtCore import QVariant
-            
-            print(f"🔍 Récupération données gestionnaire depuis PostgreSQL...")
-            
-            # Récupérer les données directement depuis PostgreSQL
+            print(f"Récupération données gestionnaire depuis PostgreSQL...")
             conn = None
             try:
                 conn = psycopg2.connect(
@@ -239,9 +233,7 @@ class LayerManager:
                     password=uri.password()
                 )
                 cursor = conn.cursor()
-                
-                # Requête pour récupérer toutes les données
-                sql_query = f"""
+                sql_query = """
                 SELECT 
                     troncon_gid,
                     segment_id,
@@ -252,42 +244,51 @@ class LayerManager:
                     distance_route_m,
                     angle_parallelisme_deg,
                     confiance_niveau,
-                    methode_attribution
-                FROM gc_exe.gestionnaire('{sro}', '{troncon}')
+                    methode_attribution,
+                    nb_pot_ac
+                FROM gc_exe.gestionnaire(%s, %s)
                 WHERE geom_segment IS NOT NULL
                 """
                 
-                cursor.execute(sql_query)
+                cursor.execute(sql_query, (sro, troncon))
                 data_rows = cursor.fetchall()
                 column_names = [desc[0] for desc in cursor.description]
                 
-                print(f"📊 Données récupérées: {len(data_rows)} enregistrements")
-                print(f"🔍 Colonnes: {column_names}")
-                
-                # Diagnostic détaillé
+                print(f"Données récupérées: {len(data_rows)} enregistrements")
+                print(f"Colonnes: {column_names}")
                 if data_rows:
-                    print(f"🔍 Premier enregistrement: {data_rows[0]}")
-                    print(f"🔍 Géométrie WKT sample: {data_rows[0][4][:100] if data_rows[0][4] else 'NULL'}...")
+                    print(f"Premier enregistrement: {data_rows[0]}")
+                    print(f"Géométrie WKT sample: {data_rows[0][4][:100] if data_rows[0][4] else 'NULL'}...")
                 else:
-                    print("⚠️ Aucune donnée retournée par la requête SQL")
+                    print("Aucune donnée retournée par la requête SQL")
                 
                 cursor.close()
                 
                 if not data_rows:
-                    print("⚠️ Aucune donnée trouvée dans gestionnaire()")
+                    print("Aucune donnée trouvée dans gestionnaire()")
                     return None
                     
             except Exception as e:
-                print(f"❌ ERREUR récupération données: {str(e)}")
+                print(f"ERREUR création couche gestionnaire: {str(e)}")
                 if conn:
                     conn.rollback()
                 return None
             finally:
                 if conn:
                     conn.close()
+            base_layer_name = f"Gestionnaire - {sro} - {troncon}"
+            layer_name = base_layer_name
+            project = QgsProject.instance()
+            existing_layers = [layer.name() for layer in project.mapLayers().values() if layer.isValid()]
+            counter = 2
+            while layer_name in existing_layers:
+                layer_name = f"{base_layer_name} ({counter})"
+                counter += 1
             
-            # Créer une couche mémoire QGIS
-            layer_name = f"Gestionnaire - {sro} - {troncon}"
+            print(f"Nom de couche sélectionné: '{layer_name}'")
+            if layer_name != base_layer_name:
+                print(f"   (nom modifié pour éviter les doublons)")
+            
             memory_layer = QgsVectorLayer(
                 "LineString?crs=EPSG:2154", 
                 layer_name, 
@@ -297,43 +298,36 @@ class LayerManager:
             if not memory_layer.isValid():
                 print("❌ ÉCHEC: Impossible de créer la couche mémoire")
                 return None
-            
-            # Définir les champs
             provider = memory_layer.dataProvider()
             fields = QgsFields()
-            fields.append(QgsField("troncon_gid", QVariant.Int))
-            fields.append(QgsField("segment_id", QVariant.String))
-            fields.append(QgsField("cm_gest_do", QVariant.String))
-            fields.append(QgsField("cm_compo", QVariant.String))
-            fields.append(QgsField("long", QVariant.Double))
-            fields.append(QgsField("distance_route_m", QVariant.Double))
-            fields.append(QgsField("angle_parallelisme_deg", QVariant.Double))
-            fields.append(QgsField("confiance_niveau", QVariant.String))
-            fields.append(QgsField("methode_attribution", QVariant.String))
+            fields.append(LayerManager.create_compatible_field("troncon_gid", QVariant.Int, "integer"))
+            fields.append(LayerManager.create_compatible_field("segment_id", QVariant.String, "text"))
+            fields.append(LayerManager.create_compatible_field("cm_gest_do", QVariant.String, "text"))
+            fields.append(LayerManager.create_compatible_field("cm_compo", QVariant.String, "text"))
+            fields.append(LayerManager.create_compatible_field("long", QVariant.Double, "double"))
+            fields.append(LayerManager.create_compatible_field("distance_route_m", QVariant.Double, "double"))
+            fields.append(LayerManager.create_compatible_field("angle_parallelisme_deg", QVariant.Double, "double"))
+            fields.append(LayerManager.create_compatible_field("confiance_niveau", QVariant.String, "text"))
+            fields.append(LayerManager.create_compatible_field("methode_attribution", QVariant.String, "text"))
+            fields.append(LayerManager.create_compatible_field("nb_pot_ac", QVariant.Int, "integer"))
             
             provider.addAttributes(fields)
             memory_layer.updateFields()
-            
-            # Ajouter les données
             features = []
             successful_features = 0
             for i, row in enumerate(data_rows):
                 try:
                     feature = QgsFeature()
-                    
-                    # Définir la géométrie depuis WKT
                     geom_wkt = row[4]  # geom_wkt est à l'index 4
                     if geom_wkt:
                         geom = QgsGeometry.fromWkt(geom_wkt)
                         if geom.isNull():
-                            print(f"⚠️ Géométrie invalide pour ligne {i}: {geom_wkt[:50]}...")
+                            print(f"Géométrie invalide pour ligne {i}: {geom_wkt[:50]}...")
                             continue
                         feature.setGeometry(geom)
                     else:
-                        print(f"⚠️ Géométrie NULL pour ligne {i}")
+                        print(f"Géométrie NULL pour ligne {i}")
                         continue
-                    
-                    # Définir les attributs (sans la géométrie)
                     attributes = [
                         row[0],  # troncon_gid
                         row[1],  # segment_id
@@ -343,47 +337,44 @@ class LayerManager:
                         float(row[6]) if row[6] else 0.0,  # distance_route_m
                         float(row[7]) if row[7] else 0.0,  # angle_parallelisme_deg
                         row[8],  # confiance_niveau
-                        row[9]   # methode_attribution
+                        row[9],  # methode_attribution
+                        int(row[10]) if row[10] else 0  # nb_pot_ac
                     ]
                     feature.setAttributes(attributes)
                     features.append(feature)
                     successful_features += 1
                     
                 except Exception as e:
-                    print(f"❌ Erreur création feature {i}: {str(e)}")
+                    print(f"Erreur création feature {i}: {str(e)}")
                     continue
             
-            print(f"🔧 Features créées avec succès: {successful_features}/{len(data_rows)}")
-            
-            # Ajouter toutes les entités avec vérification
+            print(f"Features créées avec succès: {successful_features}/{len(data_rows)}")
             if features:
                 memory_layer.startEditing()
                 result = provider.addFeatures(features)
                 if result[0]:
                     memory_layer.commitChanges()
-                    print(f"✅ {len(result[1])} entités ajoutées avec succès")
+                    print(f"{len(result[1])} entités ajoutées avec succès")
                 else:
                     memory_layer.rollBack()
-                    print(f"❌ Échec ajout des entités")
+                    print(f"Échec ajout des entités")
                     return None
             else:
-                print(f"❌ Aucune entité valide à ajouter")
+                print(f"Aucune entité valide à ajouter")
                 return None
                 
             memory_layer.updateExtents()
             final_count = memory_layer.featureCount()
-            print(f"📊 Vérification finale: {final_count} entités dans la couche")
-            
-            # Ajouter la couche au groupe si fourni
+            print(f"Couche gestionnaire créée avec succès: {final_count} entités dans la couche")
             if layer_group:
                 QgsProject.instance().addMapLayer(memory_layer, False)
                 layer_group.addLayer(memory_layer)
-                print(f"📂 Couche ajoutée au groupe: {layer_group.name()}")
+                print(f"Couche ajoutée au groupe: {layer_group.name()}")
             
             return memory_layer
                 
         except Exception as e:
-            print(f"💥 EXCEPTION lors du chargement gestionnaire: {str(e)}")
+            print(f"EXCEPTION lors du chargement gestionnaire: {str(e)}")
             import traceback
             traceback.print_exc()
             return None
@@ -410,8 +401,6 @@ class LayerManager:
             
             conn.set_session(autocommit=False)
             cursor = conn.cursor()
-            
-            # Vérifier la présence de câbles découpés
             print(f"Vérification de la présence de câbles découpés pour le SRO '{sro}'...")
             cursor.execute("SELECT COUNT(*) FROM rip_avg_nge.fddcpi2(%s) WHERE cab_type = 'CDI'", (sro,))
             count_cables = cursor.fetchone()[0]
@@ -421,28 +410,25 @@ class LayerManager:
                 return []
             
             print(f"{count_cables} segments de câbles découpés trouvés pour le SRO '{sro}'")
-            
-            # Créer table permanente unique
-            sro_safe = sro.replace("/", "_").replace("\\", "_").replace(" ", "_")
+            sro_safe = re.sub(r'[^a-zA-Z0-9]', '_', sro)
             today = datetime.now().strftime("%Y%m%d")
             unique_id = uuid.uuid4().hex[:6]
             permanent_table_name = f"cables_decoupes_{sro_safe}_{today}_{unique_id}"
-            
-            # Garantir un nom valide
             if len(permanent_table_name) > 50:
-                sro_id = sro.split("/")[-1]
+                sro_id = re.sub(r'[^a-zA-Z0-9]', '_', sro.split("/")[-1])
                 permanent_table_name = f"cables_decoupes_{sro_id}_{today}_{unique_id}"
             
             qualified_table_name = f"temporaire.{permanent_table_name}"
             
             print(f"Création de la table permanente '{qualified_table_name}'...")
-            
-            # Supprimer si existe
-            cursor.execute(f"DROP TABLE IF EXISTS {qualified_table_name}")
-            
-            # Créer la table permanente avec normalisation des capacités
-            cursor.execute(f"""
-                CREATE TABLE {qualified_table_name} AS
+            cursor.execute(
+                sql.SQL("DROP TABLE IF EXISTS {}").format(
+                    sql.Identifier('temporaire', permanent_table_name)
+                )
+            )
+            cursor.execute(
+                sql.SQL("""
+                CREATE TABLE {} AS
                 SELECT 
                     c.*,
                     CASE 
@@ -458,13 +444,13 @@ class LayerManager:
                         WHEN cab_capa <= 576 THEN 576
                         ELSE 720
                     END AS normalized_capa,
-                    '{sro}' AS sro_source,
+                    %s AS sro_source,
                     NOW() AS date_creation
                 FROM rip_avg_nge.fddcpi2(%s) c
                 WHERE cab_type = 'CDI' AND "DCE" = 'O' AND affectation != '3'
-            """, (sro,))
-            
-            # Créer des index pour optimiser
+                """).format(sql.Identifier('temporaire', permanent_table_name)),
+                (sro, sro)
+            )
             cursor.execute(f"""
                 CREATE INDEX idx_{permanent_table_name}_posemode 
                 ON {qualified_table_name}(posemode, normalized_capa)
@@ -479,8 +465,6 @@ class LayerManager:
             conn.commit()
             
             print(f"Table permanente '{qualified_table_name}' créée avec succès!")
-            
-            # Récupérer les catégories
             cursor.execute(f"""
                 SELECT 
                     posemode,
@@ -499,13 +483,9 @@ class LayerManager:
             if not uri:
                 print("Erreur: Impossible de récupérer l'URI de connexion")
                 return []
-            
-            # Créer les couches par catégorie
             for idx, (posemode, capa, count) in enumerate(categories):
                 if count == 0:
                     continue
-                
-                # Noms selon le format DQE
                 if posemode == 0:
                     layer_name = f"Câble de {capa} FO en conduite"
                 elif posemode == 1:
@@ -514,15 +494,11 @@ class LayerManager:
                     layer_name = f"Câble optique de {capa} FO en façade"
                 else:
                     layer_name = f"Câble de {capa} FO (mode pose {posemode})"
-                
-                # Requête SQL utilisant la table permanente
                 sql_query = f"""
                     SELECT * 
                     FROM {qualified_table_name}
                     WHERE posemode = {posemode} AND normalized_capa = {capa}
                 """
-                
-                # Créer la couche QGIS
                 uri_copy = QgsDataSourceUri(uri.uri())
                 uri_copy.setDataSource("", f"({sql_query})", "geom", "", "gid_dc2")
                 
@@ -535,7 +511,7 @@ class LayerManager:
                     if layers_loaded is not None:
                         layers_loaded.append(layer)
                     created_layers.append(layer)
-                    print(f"Couche créée: {layer_name} ({layer.featureCount()} entités)")
+                    print(f"Couche créée: '{layer_name}' ({layer.featureCount()} entités)")
                 else:
                     print(f" Échec du chargement de la couche {layer_name}")
             
@@ -543,7 +519,7 @@ class LayerManager:
             
             end_time = time.time()
             print(f"Temps total de chargement des câbles découpés: {end_time - start_time:.2f} secondes")
-            print(f"Total de {len(created_layers)} couches de câbles découpés chargées avec succès")
+            print(f"{len(created_layers)}/{len(categories)} couches SRO créées avec succès")
             
             return created_layers
                 
