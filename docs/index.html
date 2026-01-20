@@ -1,0 +1,2173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DQE Chargeur - Plugin QGIS</title>
+    <style>
+        :root {
+            /* Couleurs principales */
+            --primary: #2c5282;
+            --primary-light: #4299e1;
+            --secondary: #38a169;
+            --accent: #ed8936;
+            --dark: #1a202c;
+            --light: #f5f5f0;
+            --gray: #5a6a7e; /* Contraste ameliore WCAG AA */
+            --pro-color: #805ad5;
+            --exe-color: #dd6b20;
+            --pgc-color: #38a169;
+            --recover-color: #3182ce;
+            --bg: #f5f5f0;
+            --text: #1a202c;
+            --card-bg: #fafaf7;
+            --border: #e5e5dc;
+            
+            /* Systeme d'espacement unifie */
+            --space-xs: 0.5rem;
+            --space-sm: 1rem;
+            --space-md: 1.5rem;
+            --space-lg: 2.5rem;
+            --space-xl: 4rem;
+            
+            /* Typographie - ratio 1.5:1 */
+            --font-size-base: 1rem;
+            --font-size-sm: 0.875rem;
+            --font-size-lg: 1.125rem;
+            --font-size-h3: 1.35rem;
+            --font-size-h2: 2rem;
+            --font-size-h1: 3rem;
+            
+            /* Navigation */
+            --nav-height: 70px;
+        }
+        
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --text: #e2e8f0;
+            --card-bg: #1e293b;
+            --border: #334155;
+            --light: #1e293b;
+            --dark: #f1f5f9;
+            --gray: #a0aec0; /* Contraste ameliore */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        /* Accessibilite: reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+        
+        /* Focus states accessibles */
+        a:focus-visible,
+        button:focus-visible,
+        .nav-link:focus-visible,
+        .theme-toggle:focus-visible {
+            outline: 2px solid var(--primary-light);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        
+        /* Scroll margin pour navigation sticky */
+        section[id] {
+            scroll-margin-top: calc(var(--nav-height) + 1rem);
+        }
+        
+        /* Screen reader only - accessibilite */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        /* Skip link pour navigation clavier */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: var(--primary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            z-index: 1001;
+            text-decoration: none;
+            font-weight: 600;
+            border-radius: 0 0 8px 0;
+            transition: top 0.3s;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+        
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 50px;
+            padding: 0.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+        .theme-toggle:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+        .theme-toggle svg {
+            width: 24px;
+            height: 24px;
+            transition: transform 0.3s ease, opacity 0.2s ease;
+        }
+        .theme-toggle:hover svg {
+            transform: rotate(20deg);
+        }
+        .sun-icon { display: none; opacity: 0; }
+        .moon-icon { display: block; color: var(--primary); opacity: 1; }
+        [data-theme="dark"] .sun-icon { display: block; color: #fbbf24; opacity: 1; }
+        [data-theme="dark"] .moon-icon { display: none; opacity: 0; }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--dark) 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .logo svg {
+            width: 50px;
+            height: 50px;
+        }
+
+        h1 {
+            font-size: var(--font-size-h1);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 1rem;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Navigation - Glassmorphism */
+        .nav {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.4) inset;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        [data-theme="dark"] .nav {
+            background: rgba(30, 41, 59, 0.75);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.05) inset;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            padding: 0.6rem 1.2rem;
+            text-decoration: none;
+            color: var(--gray);
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: var(--light);
+            color: var(--primary);
+        }
+
+        .nav-link.pro { border-bottom: 3px solid var(--pro-color); }
+        .nav-link.exe { border-bottom: 3px solid var(--exe-color); }
+        .nav-link.pgc { border-bottom: 3px solid var(--pgc-color); }
+        .nav-link.recover { border-bottom: 3px solid var(--recover-color); }
+
+        /* Main Content */
+        .main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .section-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .section-icon.pro { background: linear-gradient(135deg, var(--pro-color), #6b46c1); }
+        .section-icon.exe { background: linear-gradient(135deg, var(--exe-color), #c05621); }
+        .section-icon.pgc { background: linear-gradient(135deg, var(--pgc-color), #276749); }
+        .section-icon.recover { background: linear-gradient(135deg, var(--recover-color), #2b6cb0); }
+
+        h2 {
+            font-size: var(--font-size-h2);
+            color: var(--text);
+            line-height: 1.3;
+        }
+
+        h3 {
+            font-size: var(--font-size-h3);
+            color: var(--text);
+            margin-bottom: var(--space-sm);
+            line-height: 1.4;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            color: var(--text);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border-left: 4px solid var(--primary-light);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            border-left-width: 5px;
+        }
+        
+        .feature-card:focus-within {
+            outline: 2px solid var(--primary-light);
+            outline-offset: 2px;
+        }
+
+        .feature-card h4 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .feature-card p {
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+
+        /* Flow Diagram */
+        .flow-diagram {
+            background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            color: #1f2937;
+        }
+        .flow-diagram h3 {
+            color: #1f2937 !important;
+        }
+        .flow-diagram .flow-step-title,
+        .flow-diagram .flow-step-desc {
+            color: #1f2937 !important;
+        }
+        [data-theme="dark"] .flow-diagram {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: #e2e8f0;
+        }
+        [data-theme="dark"] .flow-diagram h3 {
+            color: #e2e8f0 !important;
+            margin: 1.5rem 0;
+        }
+        [data-theme="dark"] .flow-diagram .flow-step-title {
+            color: #f1f5f9 !important;
+        }
+        [data-theme="dark"] .flow-diagram .flow-step-desc {
+            color: #94a3b8 !important;
+        }
+        [data-theme="dark"] .flow-diagram .flow-step-icon {
+            background: #475569 !important;
+            color: #e2e8f0;
+        }
+        [data-theme="dark"] .flow-diagram .flow-arrow {
+            color: #64748b !important;
+        }
+
+        .flow-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .flow-step {
+            flex: 1;
+            min-width: 140px;
+            text-align: center;
+            position: relative;
+        }
+
+        .flow-step-icon {
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 0.8rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            font-size: 1.5rem;
+            color: var(--primary);
+            font-weight: 700;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .flow-step:hover .flow-step-icon {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+
+        .flow-step-title {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--dark);
+            margin-bottom: 0.3rem;
+        }
+
+        .flow-step-desc {
+            font-size: 0.75rem;
+            color: var(--gray);
+        }
+
+        .flow-arrow {
+            color: var(--primary-light);
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        /* Architecture Diagram */
+        .arch-diagram {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .arch-box {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .arch-box:hover {
+            border-color: var(--primary-light);
+            box-shadow: 0 4px 15px rgba(66, 153, 225, 0.2);
+        }
+
+        .arch-box-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--primary);
+            margin-bottom: 0.3rem;
+        }
+
+        .arch-box-desc {
+            font-size: 0.75rem;
+            color: var(--gray);
+        }
+
+        .arch-box.highlight {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        .arch-box.highlight .arch-box-title,
+        .arch-box.highlight .arch-box-desc {
+            color: white;
+        }
+
+        /* Code Types Table */
+        .code-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            background: var(--card-bg);
+        }
+
+        .code-table th,
+        .code-table td {
+            padding: 0.8rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .code-table th {
+            background: var(--card-bg);
+            font-weight: 600;
+            color: var(--text);
+        }
+        [data-theme="dark"] .code-table th {
+            background: #334155;
+        }
+
+        .code-table tr:hover {
+            background: rgba(0,0,0,0.05);
+        }
+        [data-theme="dark"] .code-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        [data-theme="dark"] .code-table {
+            background: #1e293b;
+        }
+
+        .code-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        .code-badge.pro { background: rgba(128, 90, 213, 0.15); color: var(--pro-color); }
+        .code-badge.exe { background: rgba(221, 107, 32, 0.15); color: var(--exe-color); }
+        .code-badge.pgc { background: rgba(56, 161, 105, 0.15); color: var(--pgc-color); }
+
+        /* Info Box */
+        .info-box {
+            background: linear-gradient(135deg, #ebf8ff 0%, #bee3f8 100%);
+            border-left: 4px solid var(--primary-light);
+            border-radius: 0 8px 8px 0;
+            padding: 1rem 1.5rem;
+            margin: 1rem 0;
+        }
+        [data-theme="dark"] .info-box {
+            background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
+        }
+        [data-theme="dark"] .info-box[style*="#ebf8ff"],
+        [data-theme="dark"] .info-box[style*="#bee3f8"] {
+            background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%) !important;
+        }
+        [data-theme="dark"] .info-box[style*="#ebf8ff"] p,
+        [data-theme="dark"] .info-box[style*="#ebf8ff"] strong,
+        [data-theme="dark"] .info-box[style*="#bee3f8"] p,
+        [data-theme="dark"] .info-box[style*="#bee3f8"] strong {
+            color: #e2e8f0 !important;
+        }
+        
+        /* Infra cards - fond blanc = texte fonce TOUJOURS */
+        .infra-card .infra-title,
+        .infra-card .infra-desc {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .infra-card {
+            background: white !important;
+        }
+        [data-theme="dark"] .infra-card .infra-title,
+        [data-theme="dark"] .infra-card .infra-desc {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .infra-card code {
+            background: #e5e7eb !important;
+            color: #1f2937 !important;
+        }
+
+        .info-box-title {
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 0.3rem;
+        }
+        [data-theme="dark"] .info-box-title {
+            color: #93c5fd;
+        }
+
+        .info-box p {
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+        [data-theme="dark"] .info-box p {
+            color: #e2e8f0;
+        }
+        [data-theme="dark"] .info-box li,
+        [data-theme="dark"] .info-box ol,
+        [data-theme="dark"] .info-box ul,
+        [data-theme="dark"] .info-box strong {
+            color: #e2e8f0;
+        }
+
+        /* Workflow Visual */
+        .workflow-visual {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        [data-theme="dark"] .workflow-visual {
+            background: #1e293b;
+        }
+        [data-theme="dark"] .workflow-visual h3,
+        [data-theme="dark"] .workflow-visual h4,
+        [data-theme="dark"] .workflow-visual p,
+        [data-theme="dark"] .workflow-visual span {
+            color: #e2e8f0 !important;
+        }
+        
+        /* Workflow visual avec fond clair inline - forcer texte fonce */
+        .workflow-visual[style*="white"] h3,
+        .workflow-visual[style*="white"] h4,
+        .workflow-visual[style*="white"] p,
+        .workflow-visual[style*="white"] span,
+        .workflow-visual[style*="#fff"] h3,
+        .workflow-visual[style*="#fff"] h4,
+        .workflow-visual[style*="#fff"] p,
+        .workflow-visual[style*="#fff"] span {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .workflow-visual[style*="white"],
+        [data-theme="dark"] .workflow-visual[style*="#fff"] {
+            background: white !important;
+        }
+        [data-theme="dark"] .workflow-visual[style*="white"] h3,
+        [data-theme="dark"] .workflow-visual[style*="white"] h4,
+        [data-theme="dark"] .workflow-visual[style*="white"] p,
+        [data-theme="dark"] .workflow-visual[style*="white"] span,
+        [data-theme="dark"] .workflow-visual[style*="#fff"] h3,
+        [data-theme="dark"] .workflow-visual[style*="#fff"] h4,
+        [data-theme="dark"] .workflow-visual[style*="#fff"] p,
+        [data-theme="dark"] .workflow-visual[style*="#fff"] span {
+            color: #374151 !important;
+        }
+        
+        /* Dark mode - Inline style overrides */
+        [data-theme="dark"] .card[style*="background"] {
+            background: #1e293b !important;
+        }
+        [data-theme="dark"] .card[style*="#fffaf0"],
+        [data-theme="dark"] .card[style*="#feebc8"],
+        [data-theme="dark"] .card[style*="#f8fafc"],
+        [data-theme="dark"] .card[style*="#f0fff4"],
+        [data-theme="dark"] .card[style*="#c6f6d5"] {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
+        }
+        /* Cards fond clair - h3/h4/p texte clair en dark */
+        [data-theme="dark"] .card[style*="#fffaf0"] h3,
+        [data-theme="dark"] .card[style*="#feebc8"] h3,
+        [data-theme="dark"] .card[style*="#fffaf0"] p,
+        [data-theme="dark"] .card[style*="#feebc8"] p {
+            color: #e2e8f0 !important;
+        }
+        
+        /* RAN card - style specifique */
+        .ran-title {
+            color: #92400e !important;
+        }
+        [data-theme="dark"] .ran-card {
+            background: linear-gradient(135deg, #78350f 0%, #92400e 100%) !important;
+        }
+        [data-theme="dark"] .ran-title {
+            color: #fcd34d !important;
+        }
+        [data-theme="dark"] .ran-card p {
+            color: #fef3c7 !important;
+        }
+        [data-theme="dark"] .card h3,
+        [data-theme="dark"] .card p,
+        [data-theme="dark"] .card li,
+        [data-theme="dark"] .card strong {
+            color: var(--text);
+        }
+        [data-theme="dark"] code {
+            background: #334155;
+            color: #93c5fd;
+        }
+        
+        /* Dark mode - Tables avec style inline */
+        [data-theme="dark"] table[style*="background: white"],
+        [data-theme="dark"] table[style*="background:white"] {
+            background: #1e293b !important;
+        }
+        [data-theme="dark"] table td,
+        [data-theme="dark"] table th {
+            color: var(--text) !important;
+        }
+        
+        /* Dark mode - Info boxes avec style inline */
+        [data-theme="dark"] .info-box[style*="#f0fff4"],
+        [data-theme="dark"] .info-box[style*="#c6f6d5"] {
+            background: linear-gradient(135deg, #14532d 0%, #166534 100%) !important;
+        }
+        [data-theme="dark"] .info-box[style*="#f0fff4"] .info-box-title,
+        [data-theme="dark"] .info-box[style*="#c6f6d5"] .info-box-title {
+            color: #86efac !important;
+        }
+        
+        /* Dark mode - h3 et texte dans les sections */
+        [data-theme="dark"] h3 {
+            color: var(--text);
+        }
+        [data-theme="dark"] h4 {
+            color: var(--text);
+        }
+        
+        /* Dark mode - Feature cards et stats */
+        [data-theme="dark"] .feature-card {
+            background: #1e293b;
+            border-color: #475569;
+        }
+        [data-theme="dark"] .feature-card h4,
+        [data-theme="dark"] .feature-card p,
+        [data-theme="dark"] .feature-card .stat-number,
+        [data-theme="dark"] .feature-card .stat-label {
+            color: #e2e8f0 !important;
+        }
+        
+        /* Dark mode - Workflow steps */
+        [data-theme="dark"] .workflow-num {
+            background: #334155 !important;
+            color: #93c5fd !important;
+        }
+        [data-theme="dark"] .workflow-content h4 {
+            color: #f1f5f9 !important;
+        }
+        [data-theme="dark"] .workflow-content p {
+            color: #94a3b8 !important;
+        }
+        
+        /* Dark mode - Stats grids */
+        [data-theme="dark"] .stat-card,
+        [data-theme="dark"] .stats-grid > div {
+            background: #1e293b !important;
+        }
+        [data-theme="dark"] .stat-number,
+        [data-theme="dark"] .stats-grid .stat-number {
+            color: #3b82f6 !important;
+        }
+        [data-theme="dark"] .stat-label,
+        [data-theme="dark"] .stats-grid .stat-label {
+            color: #94a3b8 !important;
+        }
+        
+        /* Dark mode - Flow steps */
+        [data-theme="dark"] .flow-step-icon {
+            background: #334155 !important;
+            color: #93c5fd !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        [data-theme="dark"] .flow-step-title {
+            color: #f1f5f9 !important;
+        }
+        [data-theme="dark"] .flow-step-desc {
+            color: #94a3b8 !important;
+        }
+        [data-theme="dark"] .flow-arrow {
+            color: #64748b !important;
+        }
+        
+        /* Flow steps dans conteneur fond clair - texte fonce */
+        .workflow-visual[style*="white"] .flow-step-title,
+        .workflow-visual[style*="#fff"] .flow-step-title,
+        .card[style*="white"] .flow-step-title,
+        .card[style*="#fff"] .flow-step-title {
+            color: #1f2937 !important;
+        }
+        .workflow-visual[style*="white"] .flow-step-desc,
+        .workflow-visual[style*="#fff"] .flow-step-desc,
+        .card[style*="white"] .flow-step-desc,
+        .card[style*="#fff"] .flow-step-desc {
+            color: #6b7280 !important;
+        }
+        [data-theme="dark"] .workflow-visual[style*="white"] .flow-step-title,
+        [data-theme="dark"] .workflow-visual[style*="#fff"] .flow-step-title,
+        [data-theme="dark"] .card[style*="white"] .flow-step-title,
+        [data-theme="dark"] .card[style*="#fff"] .flow-step-title {
+            color: #1f2937 !important;
+        }
+        [data-theme="dark"] .workflow-visual[style*="white"] .flow-step-desc,
+        [data-theme="dark"] .workflow-visual[style*="#fff"] .flow-step-desc,
+        [data-theme="dark"] .card[style*="white"] .flow-step-desc,
+        [data-theme="dark"] .card[style*="#fff"] .flow-step-desc {
+            color: #6b7280 !important;
+        }
+        
+        /* Dark mode - Process visual containers */
+        [data-theme="dark"] .flow-steps {
+            background: transparent;
+        }
+        
+        /* IMPORTANT: Blocs avec fond clair - texte TOUJOURS fonce */
+        .feature-card[style*="#f0fff4"] li,
+        .feature-card[style*="#fff"] li,
+        .feature-card[style*="linear-gradient"] ul li {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#f0fff4"],
+        [data-theme="dark"] .feature-card[style*="linear-gradient(135deg, #f0fff4"] {
+            background: linear-gradient(135deg, #f0fff4 0%, #fff 100%) !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#f0fff4"] li,
+        [data-theme="dark"] .feature-card[style*="#f0fff4"] ul,
+        [data-theme="dark"] .feature-card[style*="linear-gradient(135deg, #f0fff4"] li {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#fff5f5"] {
+            background: linear-gradient(135deg, #fff5f5 0%, #fff 100%) !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#fff5f5"] li,
+        [data-theme="dark"] .feature-card[style*="#fff5f5"] ul {
+            color: #374151 !important;
+        }
+        
+        /* Mode Direct - fond #f8fafc = texte fonce */
+        .feature-card[style*="#f8fafc"] li,
+        .feature-card[style*="#f8fafc"] ul {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#f8fafc"] {
+            background: #f8fafc !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#f8fafc"] li,
+        [data-theme="dark"] .feature-card[style*="#f8fafc"] ul {
+            color: #374151 !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#f8fafc"] h4 {
+            color: #4a5568 !important;
+        }
+        
+        /* Feature cards fond vert clair - h4 vert fonce */
+        [data-theme="dark"] .feature-card[style*="#f0fff4"] h4 {
+            color: #166534 !important;
+        }
+        [data-theme="dark"] .feature-card[style*="#f0fff4"] {
+            background: linear-gradient(135deg, #f0fff4 0%, #fff 100%) !important;
+        }
+        
+        /* Blocs algorithme - fond blanc = texte noir */
+        [data-theme="dark"] .card[style*="white"],
+        [data-theme="dark"] .card[style*="#fff"],
+        [data-theme="dark"] .card[style*="#ffffff"] {
+            background: #ffffff !important;
+        }
+        [data-theme="dark"] .card[style*="white"] li,
+        [data-theme="dark"] .card[style*="white"] p,
+        [data-theme="dark"] .card[style*="#fff"] li,
+        [data-theme="dark"] .card[style*="#fff"] p {
+            color: #374151 !important;
+        }
+
+        .workflow-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .workflow-num {
+            width: 32px;
+            height: 32px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .workflow-content {
+            flex: 1;
+        }
+
+        .workflow-title {
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .workflow-desc {
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--gray);
+            margin-top: 0.3rem;
+        }
+
+        /* Infrastructure Types */
+        .infra-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .infra-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            color: #374151;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            text-align: center;
+        }
+
+        .infra-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .infra-title {
+            font-weight: 600;
+            color: #1f2937 !important;
+            margin-bottom: 0.5rem;
+        }
+
+        .infra-desc {
+            font-size: 0.85rem;
+            color: #4b5563 !important;
+        }
+
+        /* Footer */
+        .footer {
+            background: #1a202c;
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        [data-theme="dark"] .footer {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .footer-content {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .footer-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .footer-text {
+            opacity: 0.7;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .footer-version {
+            opacity: 0.5;
+            font-size: 0.8rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .arch-diagram { grid-template-columns: 1fr; }
+            .infra-grid { grid-template-columns: 1fr; }
+            .flow-arrow { display: none; }
+        }
+
+        /* Animation */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section {
+            animation: fadeInUp 0.5s ease-out;
+        }
+        
+        /* Print styles */
+        @media print {
+            .theme-toggle,
+            .nav {
+                display: none !important;
+            }
+            
+            .header {
+                background: #2c5282 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .card,
+            .feature-card {
+                break-inside: avoid;
+                box-shadow: none !important;
+                border: 1px solid #e2e8f0 !important;
+            }
+            
+            section {
+                page-break-inside: avoid;
+            }
+            
+            a[href]::after {
+                content: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip Link pour accessibilite clavier -->
+    <a href="#main-content" class="skip-link">Aller au contenu principal</a>
+    
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" onclick="toggleTheme()" title="Changer de theme" aria-label="Basculer entre theme clair et sombre" type="button">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+    </button>
+
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="header-content">
+            <div class="logo" role="img" aria-label="Logo DQE Chargeur">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#2c5282" stroke-width="2" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <h1>DQE Chargeur</h1>
+            <p class="subtitle">Plugin QGIS de generation automatique de DQE pour le projet Auvergne Numerique</p>
+            <span class="version-badge">Version 3.3.1 | QGIS 3.28+</span>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav" role="navigation" aria-label="Navigation principale">
+        <div class="nav-container">
+            <a href="#overview" class="nav-link">Vue d'ensemble</a>
+            <a href="#pro" class="nav-link pro">DQE PRO</a>
+            <a href="#exe" class="nav-link exe">DQE EXE</a>
+            <a href="#pgc" class="nav-link pgc">DQE PGC</a>
+            <a href="#recover" class="nav-link recover">DQE RECOVER</a>
+            <a href="#architecture" class="nav-link">Architecture</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main" role="main" id="main-content">
+        <!-- Overview Section -->
+        <section id="overview" class="section">
+            <div class="section-header">
+                <div class="section-icon" style="background: linear-gradient(135deg, var(--primary), var(--primary-light));">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                </div>
+                <h2>Vue d'ensemble</h2>
+            </div>
+
+            <div class="card">
+                <p style="font-size: 1.1rem; color: var(--gray); margin-bottom: 1.5rem;">
+                    <strong>DQE Chargeur</strong> est un plugin QGIS professionnel qui automatise la generation des 
+                    <em>Devis Quantitatif Estimatif</em> pour les projets d'infrastructure fibre optique.
+                    Il permet de generer des rapports Excel structures, de visualiser les donnees sur carte, 
+                    et d'archiver les validations pour une tracabilite complete.
+                </p>
+
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">4</div>
+                        <div class="stat-label">Modules principaux</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">6</div>
+                        <div class="stat-label">Types de projets</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">109</div>
+                        <div class="stat-label">Lignes de template</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">3</div>
+                        <div class="stat-label">Templates Excel</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Types Table -->
+            <div class="card">
+                <h3>Codes Projet</h3>
+                <table class="code-table" role="table">
+                    <caption class="sr-only">Liste des codes projet DQE avec leurs modules et fonctions SQL associees</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Code</th>
+                            <th scope="col">Module</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Fonction SQL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="code-badge pro">TP</span></td>
+                            <td>PRO</td>
+                            <td>Transport - Infrastructure de transport optique</td>
+                            <td><code>dqe2(sro, 'TP')</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="code-badge pro">DP</span></td>
+                            <td>PRO</td>
+                            <td>Distribution - Infrastructure de distribution optique</td>
+                            <td><code>dqe2(sro, 'DP')</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="code-badge exe">TE</span></td>
+                            <td>EXE</td>
+                            <td>Transport Execution - Projet + Genie Civil</td>
+                            <td><code>dqe_exe(sro, 'TE')</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="code-badge exe">DE</span></td>
+                            <td>EXE</td>
+                            <td>Distribution Execution - Projet + Genie Civil</td>
+                            <td><code>dqe_exe(sro, 'DE')</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="code-badge pgc">GC</span></td>
+                            <td>PGC</td>
+                            <td>Plan de Gestion de Configuration - Attribution gestionnaire</td>
+                            <td><code>dqe_pgc(sro, troncon)</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- DQE PRO Section -->
+        <section id="pro" class="section">
+            <div class="section-header">
+                <div class="section-icon pro">PRO</div>
+                <h2>DQE PRO - Quantitatifs Projet</h2>
+            </div>
+
+            <div class="card">
+                <p style="margin-bottom: 1.5rem;">
+                    Le module <strong>DQE PRO</strong> genere les quantitatifs pour les phases de projet.
+                    Il supporte deux types : <em>Transport (TP)</em> pour l'infrastructure backbone et 
+                    <em>Distribution (DP)</em> pour le deploiement client.
+                </p>
+
+                <!-- Flow Diagram -->
+                <div class="flow-diagram">
+                    <h3 style="text-align: center; margin-bottom: 1.5rem;">Processus de Generation</h3>
+                    <div class="flow-steps">
+                        <div class="flow-step">
+                            <div class="flow-step-icon">1</div>
+                            <div class="flow-step-title">Selection SRO</div>
+                            <div class="flow-step-desc">Code + Type</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">2</div>
+                            <div class="flow-step-title">Execution SQL</div>
+                            <div class="flow-step-desc">dqe2()</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">3</div>
+                            <div class="flow-step-title">Generation Excel</div>
+                            <div class="flow-step-desc">109 lignes</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">4</div>
+                            <div class="flow-step-title">Couches QGIS</div>
+                            <div class="flow-step-desc">Visualisation</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">5</div>
+                            <div class="flow-step-title">Validation</div>
+                            <div class="flow-step-desc">Archivage</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Features -->
+                <div class="card-grid">
+                    <div class="feature-card" style="border-left-color: var(--pro-color);">
+                        <h4>Cables optiques</h4>
+                        <p>6, 12, 24, 48, 72, 144, 288 FO en aerien, facade ou conduite</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--pro-color);">
+                        <h4>BPE et PA</h4>
+                        <p>Boites de protection et points d'acces avec quantites automatiques</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--pro-color);">
+                        <h4>Cables decoupes</h4>
+                        <p>Generation automatique des couches de cables decoupes (Distribution)</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--pro-color);">
+                        <h4>Archivage JSON</h4>
+                        <p>Sauvegarde des resultats et geometries dans dqe.dqejson</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DQE EXE Section -->
+        <section id="exe" class="section">
+            <div class="section-header">
+                <div class="section-icon exe">EXE</div>
+                <h2>DQE EXE - Quantitatifs Execution</h2>
+            </div>
+
+            <div class="card">
+                <p style="margin-bottom: 1.5rem;">
+                    Le module <strong>DQE EXE</strong> integre les quantitatifs projet avec le <em>Genie Civil</em>.
+                    Il ajoute tranchees, chambres, poteaux et alveoles aux donnees de base.
+                </p>
+
+                <!-- Info Box -->
+                <div class="info-box">
+                    <div class="info-box-title">Difference avec DQE PRO</div>
+                    <p>DQE EXE utilise <code>dqe_exe()</code> au lieu de <code>dqe2()</code> et inclut les elements de genie civil (infrastructure physique).</p>
+                </div>
+
+                <!-- Features Grid -->
+                <div class="card-grid">
+                    <div class="feature-card" style="border-left-color: var(--exe-color);">
+                        <h4>Tranchees</h4>
+                        <p>Traditionnelle, micro-tranchee sous chaussee ou trottoir</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--exe-color);">
+                        <h4>Chambres</h4>
+                        <p>L3C, L3T et autres types avec comptage par materiau</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--exe-color);">
+                        <h4>Poteaux RAUV</h4>
+                        <p>Support aerien avec comptage par concessionnaire</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--exe-color);">
+                        <h4>Alveoles</h4>
+                        <p>PVC 42/45, PEHD 33/40 avec calcul automatique des longueurs</p>
+                    </div>
+                </div>
+
+                <!-- Blocage RAN -->
+                <div class="card ran-card" style="background: linear-gradient(135deg, #fffaf0 0%, #feebc8 100%); margin-top: 1.5rem;">
+                    <h3 class="ran-title">Gestion Blocage RAN</h3>
+                    <p style="margin-bottom: 1rem;">Le module EXE supporte la separation des travaux bloquants :</p>
+                    <table class="code-table" style="background: white; border-radius: 8px;" role="table">
+                        <caption class="sr-only">Modes de gestion du blocage RAN</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Code</th>
+                                <th scope="col">Mode</th>
+                                <th scope="col">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="code-badge exe">TE / DE</span></td>
+                                <td>Standard</td>
+                                <td>Tous les elements sans filtre</td>
+                            </tr>
+                            <tr>
+                                <td><span class="code-badge exe">TT / DT</span></td>
+                                <td>Travaux</td>
+                                <td>Exclut les elements bloques RAN</td>
+                            </tr>
+                            <tr>
+                                <td><span class="code-badge exe">TB / DB</span></td>
+                                <td>Blocage</td>
+                                <td>Uniquement les elements bloques RAN</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- DQE PGC Section -->
+        <section id="pgc" class="section">
+            <div class="section-header">
+                <div class="section-icon pgc">PGC</div>
+                <h2>DQE PGC - Attribution Gestionnaire & Redevances</h2>
+            </div>
+
+            <div class="card">
+                <p style="margin-bottom: 1.5rem;">
+                    Le module <strong>DQE PGC</strong> gere l'attribution des infrastructures aux gestionnaires 
+                    (concessionnaires de voirie) via un algorithme avance et calcule les redevances associees.
+                    <strong>Deux modes</strong> sont disponibles pour repondre a differents besoins.
+                </p>
+
+                <!-- Les deux modes -->
+                <div class="card-grid" style="margin-bottom: 2rem;">
+                    <div class="feature-card" style="border-left-color: var(--pgc-color); background: linear-gradient(135deg, #f0fff4 0%, #fff 100%);">
+                        <h4 style="color: var(--pgc-color);">Mode Gestionnaire (Recommande)</h4>
+                        <ul style="margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.9rem; color: var(--gray);">
+                            <li>Calcul precis par algorithme de proximite</li>
+                            <li>Couche editable dans QGIS</li>
+                            <li>Corrections manuelles possibles</li>
+                            <li>Regeneration Excel apres modifications</li>
+                            <li>Resultats optimises et verifiables</li>
+                        </ul>
+                    </div>
+                    <div class="feature-card" style="border-left-color: #718096; background: #f8fafc;">
+                        <h4 style="color: #4a5568;">Mode Direct (Rapide)</h4>
+                        <ul style="margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.9rem; color: var(--gray);">
+                            <li>Traitement sans intervention</li>
+                            <li>Donnees existantes uniquement</li>
+                            <li>Export Excel automatique</li>
+                            <li>Pas de correction possible</li>
+                            <li>Ideal pour validation rapide</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Schema SVG Algorithme Gestionnaire -->
+                <div class="card" style="background: linear-gradient(135deg, #f0fff4 0%, #e6fffa 100%); padding: 1.5rem;">
+                    <h3 style="text-align: center; margin-bottom: 1.5rem; color: var(--pgc-color);">Algorithme gc_exe.gestionnaire()</h3>
+                    <svg viewBox="0 0 800 320" style="width: 100%; max-width: 800px; margin: 0 auto; display: block;">
+                        <defs>
+                            <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#38a169"/>
+                            </marker>
+                        </defs>
+                        
+                        <!-- Etape 1 (decale +30 pour centrer) -->
+                        <rect x="50" y="20" width="140" height="60" rx="8" fill="#38a169" filter="url(#shadow)"/>
+                        <text x="120" y="45" text-anchor="middle" font-size="11" fill="white" font-weight="600">1. Troncons</text>
+                        <text x="120" y="62" text-anchor="middle" font-size="9" fill="#c6f6d5">t_cheminement</text>
+                        
+                        <line x1="190" y1="50" x2="220" y2="50" stroke="#38a169" stroke-width="2" marker-end="url(#arrowGreen)"/>
+                        
+                        <!-- Etape 2 -->
+                        <rect x="230" y="20" width="140" height="60" rx="8" fill="#2f855a" filter="url(#shadow)"/>
+                        <text x="300" y="45" text-anchor="middle" font-size="11" fill="white" font-weight="600">2. Segmentation</text>
+                        <text x="300" y="62" text-anchor="middle" font-size="9" fill="#9ae6b4">Resolution 2m</text>
+                        
+                        <line x1="370" y1="50" x2="400" y2="50" stroke="#38a169" stroke-width="2" marker-end="url(#arrowGreen)"/>
+                        
+                        <!-- Etape 3 -->
+                        <rect x="410" y="20" width="140" height="60" rx="8" fill="#276749" filter="url(#shadow)"/>
+                        <text x="480" y="45" text-anchor="middle" font-size="11" fill="white" font-weight="600">3. Attribution</text>
+                        <text x="480" y="62" text-anchor="middle" font-size="9" fill="#9ae6b4">Distance + Angle</text>
+                        
+                        <line x1="550" y1="50" x2="580" y2="50" stroke="#38a169" stroke-width="2" marker-end="url(#arrowGreen)"/>
+                        
+                        <!-- Etape 4 -->
+                        <rect x="590" y="20" width="140" height="60" rx="8" fill="#22543d" filter="url(#shadow)"/>
+                        <text x="660" y="45" text-anchor="middle" font-size="11" fill="white" font-weight="600">4. Resultat</text>
+                        <text x="660" y="62" text-anchor="middle" font-size="9" fill="#9ae6b4">cm_gest_do + nb_pot_ac</text>
+                        
+                        <!-- Detail boxes -->
+                        <rect x="20" y="100" width="230" height="100" rx="6" fill="white" stroke="#38a169"/>
+                        <text x="135" y="120" text-anchor="middle" font-size="10" fill="#276749" font-weight="600">Analyse par point</text>
+                        <text x="30" y="140" font-size="9" fill="#4a5568">- Buffer recherche: 50m</text>
+                        <text x="30" y="155" font-size="9" fill="#4a5568">- Distance max: 15m</text>
+                        <text x="30" y="170" font-size="9" fill="#4a5568">- Seuil parallelisme: 20deg</text>
+                        <text x="30" y="185" font-size="9" fill="#4a5568">- Detection carrefours automatique</text>
+                        
+                        <rect x="270" y="100" width="230" height="100" rx="6" fill="white" stroke="#38a169"/>
+                        <text x="385" y="120" text-anchor="middle" font-size="10" fill="#276749" font-weight="600">Score attribution</text>
+                        <text x="280" y="140" font-size="9" fill="#4a5568">- 80% : Distance au plus proche</text>
+                        <text x="280" y="155" font-size="9" fill="#4a5568">- 20% : Parallelisme geometrique</text>
+                        <text x="280" y="170" font-size="9" fill="#4a5568">- Bonus si parallele (&lt;20deg)</text>
+                        <text x="280" y="185" font-size="9" fill="#4a5568">- Mode majoritaire par troncon</text>
+                        
+                        <rect x="520" y="100" width="230" height="100" rx="6" fill="white" stroke="#38a169"/>
+                        <text x="635" y="120" text-anchor="middle" font-size="10" fill="#276749" font-weight="600">Sortie couche QGIS</text>
+                        <text x="530" y="140" font-size="9" fill="#4a5568">- troncon_gid, segment_id</text>
+                        <text x="530" y="155" font-size="9" fill="#4a5568">- cm_gest_do (concessionnaire)</text>
+                        <text x="530" y="170" font-size="9" fill="#4a5568">- cm_compo, cm_typ_imp</text>
+                        <text x="530" y="185" font-size="9" fill="#4a5568">- nb_pot_ac (poteaux)</text>
+                        
+                        <!-- Fleche vers redevance -->
+                        <line x1="400" y1="210" x2="400" y2="250" stroke="#38a169" stroke-width="2" marker-end="url(#arrowGreen)"/>
+                        
+                        <!-- Redevance -->
+                        <rect x="280" y="260" width="240" height="50" rx="8" fill="linear-gradient(135deg, #38a169, #2f855a)" filter="url(#shadow)"/>
+                        <rect x="280" y="260" width="240" height="50" rx="8" fill="#38a169"/>
+                        <text x="400" y="285" text-anchor="middle" font-size="12" fill="white" font-weight="700">gc_exe.redevance_table()</text>
+                        <text x="400" y="300" text-anchor="middle" font-size="9" fill="#c6f6d5">Calcul redevances par concessionnaire</text>
+                    </svg>
+                </div>
+
+                <!-- Infrastructure Types -->
+                <h3 style="margin-top: 2rem;">Types d'Infrastructure</h3>
+                <div class="infra-grid">
+                    <div class="infra-card">
+                        <div class="infra-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#805ad5" stroke-width="2">
+                                <line x1="24" y1="8" x2="24" y2="44" stroke-width="3"/>
+                                <line x1="12" y1="12" x2="36" y2="12" stroke-width="2.5"/>
+                                <line x1="14" y1="12" x2="14" y2="18"/>
+                                <line x1="24" y1="12" x2="24" y2="18"/>
+                                <line x1="34" y1="12" x2="34" y2="18"/>
+                                <line x1="18" y1="44" x2="30" y2="44" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <div class="infra-title">Aerienne Pure</div>
+                        <div class="infra-desc">Poteaux RAUV uniquement<br><code>cm_typ_imp = 0</code></div>
+                    </div>
+                    <div class="infra-card">
+                        <div class="infra-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#38a169" stroke-width="2">
+                                <rect x="6" y="10" width="36" height="28" rx="2" fill="#c6f6d5" stroke="#38a169"/>
+                                <circle cx="16" cy="20" r="4" fill="white"/>
+                                <circle cx="28" cy="20" r="4" fill="white"/>
+                                <circle cx="16" cy="32" r="4" fill="white"/>
+                                <circle cx="28" cy="32" r="4" fill="white"/>
+                                <circle cx="16" cy="20" r="1.5" fill="#38a169"/>
+                                <circle cx="28" cy="20" r="1.5" fill="#38a169"/>
+                                <circle cx="16" cy="32" r="1.5" fill="#38a169"/>
+                                <circle cx="28" cy="32" r="1.5" fill="#38a169"/>
+                            </svg>
+                        </div>
+                        <div class="infra-title">Souterraine Pure</div>
+                        <div class="infra-desc">Alveoles PVC/PEHD<br><code>cm_typ_imp = 7</code></div>
+                    </div>
+                    <div class="infra-card">
+                        <div class="infra-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#dd6b20" stroke-width="2">
+                                <line x1="14" y1="6" x2="14" y2="26" stroke-width="2.5"/>
+                                <line x1="8" y1="10" x2="20" y2="10" stroke-width="2"/>
+                                <rect x="26" y="18" width="16" height="16" rx="2" fill="#feebc8" stroke="#dd6b20"/>
+                                <circle cx="32" cy="24" r="3" fill="white"/>
+                                <circle cx="38" cy="30" r="3" fill="white"/>
+                                <circle cx="32" cy="24" r="1" fill="#dd6b20"/>
+                                <circle cx="38" cy="30" r="1" fill="#dd6b20"/>
+                                <path d="M20 20 L26 20" stroke-dasharray="2,2"/>
+                                <line x1="6" y1="40" x2="42" y2="40" stroke-width="1.5"/>
+                            </svg>
+                        </div>
+                        <div class="infra-title">Mixte</div>
+                        <div class="infra-desc">Poteaux + Alveoles<br>Totaux separes</div>
+                    </div>
+                </div>
+
+                <!-- Calcul Redevance -->
+                <div class="card" style="background: #f8fafc; margin-top: 1.5rem;">
+                    <h3>Calcul des Redevances</h3>
+                    <p style="margin-bottom: 1rem; font-size: 0.9rem;">
+                        La fonction <code>gc_exe.redevance_table()</code> genere dynamiquement une table de redevances 
+                        par concessionnaire selon le type d'infrastructure detecte.
+                    </p>
+                    <table class="code-table" style="background: white; border-radius: 8px;" role="table">
+                        <caption class="sr-only">Calcul des redevances par type d'infrastructure</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Type Infrastructure</th>
+                                <th scope="col">Colonnes Generees</th>
+                                <th scope="col">Calcul</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Aerienne</strong></td>
+                                <td><code>Poteaux</code>, <code>Aerien</code> (ml)</td>
+                                <td>SUM(nb_pot_ac), SUM(long)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Souterraine</strong></td>
+                                <td>Colonnes dynamiques par cm_compo</td>
+                                <td>nb_alveoles x long_plan</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Mixte</strong></td>
+                                <td><code>Poteaux</code> + <code>Aerien</code> + Alveoles</td>
+                                <td>FULL OUTER JOIN des deux</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Mode Gestionnaire workflow -->
+                <div class="info-box" style="background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%); border-left-color: var(--pgc-color); margin-top: 1.5rem;">
+                    <div class="info-box-title" style="color: var(--pgc-color);">Workflow Mode Gestionnaire</div>
+                    <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
+                        <li><strong>Execution DQE PGC</strong> → Chargement couche gestionnaire editable</li>
+                        <li><strong>Modifications</strong> → Corriger <code>cm_gest_do</code> dans QGIS (transfert segments)</li>
+                        <li><strong>Regeneration</strong> → Bouton "Regenerer Excel" recalcule les redevances</li>
+                        <li><strong>Validation</strong> → Archivage des donnees finales dans dqe.dqejson</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <!-- DQE RECOVER Section -->
+        <section id="recover" class="section">
+            <div class="section-header">
+                <div class="section-icon recover">REC</div>
+                <h2>DQE RECOVER - Recuperation Archives</h2>
+            </div>
+
+            <div class="card">
+                <p style="margin-bottom: 1.5rem;">
+                    Le module <strong>DQE RECOVER</strong> permet de consulter et regenerer les DQE precedemment valides.
+                    Il offre un historique complet avec apercu HTML et capacites de restauration.
+                </p>
+
+                <!-- Flow Diagram -->
+                <div class="flow-diagram">
+                    <h3 style="text-align: center; margin-bottom: 1.5rem;">Processus de Recuperation</h3>
+                    <div class="flow-steps">
+                        <div class="flow-step">
+                            <div class="flow-step-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                                </svg>
+                            </div>
+                            <div class="flow-step-title">Recherche</div>
+                            <div class="flow-step-desc">Filtrer par Type/SRO</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2">
+                                    <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                                </svg>
+                            </div>
+                            <div class="flow-step-title">Selection</div>
+                            <div class="flow-step-desc">Choisir un DQE</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </div>
+                            <div class="flow-step-title">Apercu</div>
+                            <div class="flow-step-desc">HTML avec watermark</div>
+                        </div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">
+                            <div class="flow-step-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2">
+                                    <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/>
+                                </svg>
+                            </div>
+                            <div class="flow-step-title">Regeneration</div>
+                            <div class="flow-step-desc">Excel + Couches</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Features -->
+                <div class="card-grid">
+                    <div class="feature-card" style="border-left-color: var(--recover-color);">
+                        <h4>Historique par date</h4>
+                        <p>Chaque validation affichee separement, meme pour le meme SRO</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--recover-color);">
+                        <h4>Regenerer Excel</h4>
+                        <p>Recree le fichier Excel a partir des donnees archivees</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--recover-color);">
+                        <h4>Recreer Couches</h4>
+                        <p>Reconstruit les couches QGIS avec geometries WKT</p>
+                    </div>
+                    <div class="feature-card" style="border-left-color: var(--recover-color);">
+                        <h4>Apercu HTML</h4>
+                        <p>Visualisation stylisee avec watermark "ARCHIVE"</p>
+                    </div>
+                </div>
+
+                <!-- Data Structure -->
+                <div class="info-box" style="background: linear-gradient(135deg, #ebf8ff 0%, #bee3f8 100%);">
+                    <div class="info-box-title">Structure des donnees archivees</div>
+                    <p><strong>sql_result</strong> : designation, quantite, unite, ids<br>
+                    <strong>FeatureCollection</strong> : geometries WKT, attributs, CRS EPSG:2154</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture Section -->
+        <section id="architecture" class="section">
+            <div class="section-header">
+                <div class="section-icon" style="background: linear-gradient(135deg, #4a5568, #2d3748);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                </div>
+                <h2>Architecture du Plugin</h2>
+            </div>
+
+            <!-- Schema d'Architecture Interactif -->
+            <div class="card arch-interactive" style="padding: 2rem; overflow: hidden;">
+                <h3 style="text-align: center; margin-bottom: 1.5rem;">Architecture DQE Chargeur</h3>
+                
+                <!-- Schema Interactif avec CSS Grid - Dark/Light optimise -->
+                <style>
+                    .arch-interactive { position: relative; }
+                    .arch-layer { 
+                        display: grid; 
+                        gap: 1rem; 
+                        padding: 1.5rem; 
+                        border-radius: 12px; 
+                        margin-bottom: 1rem;
+                        position: relative;
+                    }
+                    .arch-layer::before {
+                        content: attr(data-label);
+                        position: absolute;
+                        top: -0.6rem;
+                        left: 1rem;
+                        background: var(--card-bg);
+                        padding: 0 0.5rem;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                    }
+                    
+                    /* QGIS Layer - Toujours sombre */
+                    .layer-qgis { 
+                        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
+                        grid-template-columns: 1fr;
+                    }
+                    .layer-qgis::before { color: #93c5fd; background: #1e293b !important; }
+                    
+                    /* UI Layer - Adaptatif */
+                    .layer-ui { 
+                        background: #f1f5f9;
+                        border: 2px solid #cbd5e1;
+                        grid-template-columns: repeat(4, 1fr);
+                    }
+                    .layer-ui::before { color: #475569; }
+                    [data-theme="dark"] .layer-ui { 
+                        background: #1e293b; 
+                        border-color: #475569;
+                    }
+                    [data-theme="dark"] .layer-ui::before { color: #94a3b8; background: #1e293b !important; }
+                    
+                    /* Business Layer - Vert adaptatif */
+                    .layer-business { 
+                        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); 
+                        grid-template-columns: repeat(3, 1fr);
+                    }
+                    .layer-business::before { color: #166534; }
+                    [data-theme="dark"] .layer-business { 
+                        background: linear-gradient(135deg, #14532d 0%, #166534 100%); 
+                    }
+                    [data-theme="dark"] .layer-business::before { color: #86efac; background: #14532d !important; }
+                    
+                    /* Sortie Layer - Bleu adaptatif */
+                    .layer-output {
+                        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+                    }
+                    .layer-output::before { color: #1e40af; }
+                    [data-theme="dark"] .layer-output {
+                        background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%);
+                    }
+                    [data-theme="dark"] .layer-output::before { color: #93c5fd; background: #1e3a5f !important; }
+                    
+                    /* QA Layer - Jaune adaptatif */
+                    .layer-qa {
+                        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                    }
+                    .layer-qa::before { color: #92400e; }
+                    [data-theme="dark"] .layer-qa {
+                        background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+                    }
+                    [data-theme="dark"] .layer-qa::before { color: #fcd34d; background: #78350f !important; }
+                    
+                    /* DB Layer - Toujours sombre */
+                    .layer-db { 
+                        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
+                        grid-template-columns: repeat(4, 1fr);
+                    }
+                    .layer-db::before { color: #93c5fd; background: #1e293b !important; }
+                    
+                    /* Boxes */
+                    .arch-box {
+                        padding: 1rem;
+                        border-radius: 10px;
+                        text-align: center;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        position: relative;
+                        overflow: hidden;
+                    }
+                    .arch-box:hover {
+                        transform: translateY(-4px) scale(1.02);
+                        box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+                    }
+                    .arch-box::after {
+                        content: '';
+                        position: absolute;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 100%);
+                        pointer-events: none;
+                    }
+                    .arch-box-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }
+                    .arch-box-sub { font-size: 0.7rem; opacity: 0.9; }
+                    
+                    /* Module boxes - Couleurs vives lisibles */
+                    .box-qgis { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; grid-column: 1 / -1; }
+                    .box-pro { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: #ffffff; }
+                    .box-exe { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: #ffffff; }
+                    .box-pgc { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #ffffff; }
+                    .box-recover { background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #ffffff; }
+                    
+                    /* Service boxes - Adaptatif light/dark */
+                    .box-service { 
+                        background: #ffffff; 
+                        border: 2px solid #22c55e; 
+                        color: #166534; 
+                    }
+                    [data-theme="dark"] .box-service { 
+                        background: #1e293b; 
+                        border-color: #4ade80;
+                        color: #86efac; 
+                    }
+                    
+                    /* Output boxes */
+                    .box-output {
+                        background: #ffffff;
+                        border: 2px solid #3b82f6;
+                        color: #1e40af;
+                    }
+                    [data-theme="dark"] .box-output {
+                        background: #1e3a5f;
+                        border-color: #60a5fa;
+                        color: #bfdbfe;
+                    }
+                    
+                    /* QA boxes */
+                    .box-qa {
+                        background: #ffffff;
+                        border: 2px solid #f59e0b;
+                        color: #92400e;
+                    }
+                    [data-theme="dark"] .box-qa {
+                        background: #451a03;
+                        border-color: #fbbf24;
+                        color: #fcd34d;
+                    }
+                    
+                    /* DB boxes - Texte BLANC pour lisibilite maximale */
+                    .box-db { 
+                        background: linear-gradient(135deg, #475569 0%, #334155 100%); 
+                        color: #ffffff !important; 
+                        border-radius: 10px 10px 20px 20px; 
+                    }
+                    .box-db .arch-box-title { color: #ffffff !important; }
+                    .box-db .arch-box-sub { color: #e2e8f0 !important; }
+                    
+                    .box-db-blue { 
+                        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); 
+                        color: #ffffff !important; 
+                        border-radius: 10px 10px 20px 20px; 
+                    }
+                    .box-db-blue .arch-box-title { color: #ffffff !important; }
+                    .box-db-blue .arch-box-sub { color: #dbeafe !important; }
+                    
+                    /* Thread indicator */
+                    .thread-badge {
+                        display: inline-block;
+                        background: rgba(0,0,0,0.2);
+                        padding: 0.15rem 0.4rem;
+                        border-radius: 4px;
+                        font-size: 0.6rem;
+                        margin-top: 0.3rem;
+                    }
+                    
+                    /* Tooltip adaptatif */
+                    .arch-box[data-tooltip]:hover::before {
+                        content: attr(data-tooltip);
+                        position: absolute;
+                        bottom: 100%;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background: #0f172a;
+                        color: #f1f5f9;
+                        padding: 0.5rem 1rem;
+                        border-radius: 6px;
+                        font-size: 0.75rem;
+                        white-space: nowrap;
+                        z-index: 100;
+                        margin-bottom: 0.5rem;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    }
+                </style>
+                
+                <!-- Couche QGIS Runtime -->
+                <div class="arch-layer layer-qgis" data-label="QGIS 3.28 Runtime">
+                    <div class="arch-box box-qgis">
+                        <div class="arch-box-title">iface | QgsProject | QThread | PyQt5 Signals</div>
+                        <div class="arch-box-sub">Environnement d'execution - Chaque module cree son propre QThread</div>
+                    </div>
+                </div>
+                
+                <!-- Couche Interface Utilisateur - Chaque module avec son thread -->
+                <div class="arch-layer layer-ui" data-label="Modules UI (chacun avec son QThread)">
+                    <div class="arch-box box-pro" data-tooltip="Transport & Distribution - Thread propre pour calcul async">
+                        <div class="arch-box-title">DQE PRO</div>
+                        <div class="arch-box-sub">TP | DP</div>
+                        <div class="thread-badge">QThread</div>
+                    </div>
+                    <div class="arch-box box-exe" data-tooltip="Genie Civil 6 types - Thread propre pour calcul async">
+                        <div class="arch-box-title">DQE EXE</div>
+                        <div class="arch-box-sub">TE|DE|TT|DT|TB|DB</div>
+                        <div class="thread-badge">QThread</div>
+                    </div>
+                    <div class="arch-box box-pgc" data-tooltip="Gestionnaire + Redevances - Thread propre + Mode interactif">
+                        <div class="arch-box-title">DQE PGC</div>
+                        <div class="arch-box-sub">Gestionnaire | Redevances</div>
+                        <div class="thread-badge">QThread</div>
+                    </div>
+                    <div class="arch-box box-recover" data-tooltip="Lecture archives - Acces direct sans thread">
+                        <div class="arch-box-title">RECOVER</div>
+                        <div class="arch-box-sub">Archives JSON</div>
+                        <div class="thread-badge">Direct</div>
+                    </div>
+                </div>
+                
+                <!-- Couche Services Partages -->
+                <div class="arch-layer layer-business" data-label="Services Partages">
+                    <div class="arch-box box-service" data-tooltip="Requetes PostgreSQL via psycopg2">
+                        <div class="arch-box-title">database_operations</div>
+                        <div class="arch-box-sub">execute_dqe_*() | psycopg2</div>
+                    </div>
+                    <div class="arch-box box-service" data-tooltip="Creation couches QgsVectorLayer">
+                        <div class="arch-box-title">layer_manager</div>
+                        <div class="arch-box-sub">QgsVectorLayer | EPSG:2154</div>
+                    </div>
+                    <div class="arch-box box-service" data-tooltip="Generation rapports Excel via openpyxl">
+                        <div class="arch-box-title">excel_manager</div>
+                        <div class="arch-box-sub">openpyxl | 3 templates .xlsx</div>
+                    </div>
+                </div>
+                
+                <!-- Couche Sortie + QA -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div class="arch-layer layer-output" style="margin: 0;" data-label="Sorties">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem;">
+                            <div class="arch-box box-output">
+                                <div class="arch-box-title">Excel</div>
+                                <div class="arch-box-sub">PRO | EXE | PGC</div>
+                            </div>
+                            <div class="arch-box box-output">
+                                <div class="arch-box-title">Couches QGIS</div>
+                                <div class="arch-box-sub">LayerTreeGroup</div>
+                            </div>
+                            <div class="arch-box box-output" style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none;">
+                                <div class="arch-box-title">dqejson</div>
+                                <div class="arch-box-sub">Archive JSONB</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="arch-layer layer-qa" style="margin: 0;" data-label="Validation QA">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+                            <div class="arch-box box-qa">
+                                <div class="arch-box-title">Preconditions</div>
+                                <div class="arch-box-sub">SRO | CRS | Connexion DB</div>
+                            </div>
+                            <div class="arch-box box-qa">
+                                <div class="arch-box-title">Postconditions</div>
+                                <div class="arch-box-sub">Geometries | Messages UI</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Couche Base de Donnees -->
+                <div class="arch-layer layer-db" data-label="PostgreSQL">
+                    <div class="arch-box box-db" data-tooltip="Schema principal - Fonctions DQE">
+                        <div class="arch-box-title">rip_avg_nge</div>
+                        <div class="arch-box-sub">dqe2() | dqe_exe() | dqe_pgc()</div>
+                    </div>
+                    <div class="arch-box box-db" data-tooltip="Algorithme gestionnaire + calcul redevances">
+                        <div class="arch-box-title">gc_exe</div>
+                        <div class="arch-box-sub">gestionnaire() | redevance_table()</div>
+                    </div>
+                    <div class="arch-box box-db-blue" data-tooltip="Table d'archivage JSONB">
+                        <div class="arch-box-title">dqe.dqejson</div>
+                        <div class="arch-box-sub">JSONB | version_projet</div>
+                    </div>
+                    <div class="arch-box box-db" data-tooltip="Tables de reference metier">
+                        <div class="arch-box-title">Tables Metier</div>
+                        <div class="arch-box-sub">t_cheminement | infra_pt_*</div>
+                    </div>
+                </div>
+                
+                <!-- Legende Compacte - Adaptative dark/light -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1.5rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border);">
+                    <div>
+                        <strong style="font-size: 0.75rem; color: var(--text);">COULEURS</strong>
+                        <div style="font-size: 0.7rem; margin-top: 0.3rem; color: var(--gray);">
+                            <span style="display: inline-block; width: 12px; height: 12px; background: #8b5cf6; border-radius: 2px; vertical-align: middle;"></span> Violet = Projet<br>
+                            <span style="display: inline-block; width: 12px; height: 12px; background: #f97316; border-radius: 2px; vertical-align: middle;"></span> Orange = Execution<br>
+                            <span style="display: inline-block; width: 12px; height: 12px; background: #22c55e; border-radius: 2px; vertical-align: middle;"></span> Vert = PGC/Services<br>
+                            <span style="display: inline-block; width: 12px; height: 12px; background: #0ea5e9; border-radius: 2px; vertical-align: middle;"></span> Bleu = Donnees
+                        </div>
+                    </div>
+                    <div>
+                        <strong style="font-size: 0.75rem; color: var(--text);">ARCHITECTURE</strong>
+                        <div style="font-size: 0.7rem; margin-top: 0.3rem; color: var(--gray);">
+                            Chaque module = QThread<br>
+                            Services = Partages<br>
+                            RECOVER = Acces direct<br>
+                            Pas de Worker central
+                        </div>
+                    </div>
+                    <div>
+                        <strong style="font-size: 0.75rem; color: var(--text);">POSITION (Y)</strong>
+                        <div style="font-size: 0.7rem; margin-top: 0.3rem; color: var(--gray);">
+                            Haut = Interface UI<br>
+                            Milieu = Services<br>
+                            Bas = PostgreSQL
+                        </div>
+                    </div>
+                    <div>
+                        <strong style="font-size: 0.75rem; color: var(--text);">VALIDATION</strong>
+                        <div style="font-size: 0.7rem; margin-top: 0.3rem; color: var(--gray);">
+                            <span style="color: #f59e0b;">Jaune</span> = QA Check<br>
+                            Pre: SRO, CRS, DB<br>
+                            Post: Geom, Messages
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem;">
+                <h3>Structure Modulaire</h3>
+                <div class="arch-diagram">
+                    <div class="arch-box highlight">
+                        <div class="arch-box-title">dqe_chargeur.py</div>
+                        <div class="arch-box-desc">Plugin Principal</div>
+                    </div>
+                    <div class="arch-box highlight">
+                        <div class="arch-box-title">dqe_chargeur_dialog.py</div>
+                        <div class="arch-box-desc">Dialog + Onglets</div>
+                    </div>
+                    <div class="arch-box">
+                        <div class="arch-box-title">dqe_utils.py</div>
+                        <div class="arch-box-desc">Utilitaires</div>
+                    </div>
+                    <div class="arch-box" style="border-color: var(--pro-color);">
+                        <div class="arch-box-title">dqe_pro_tab.py</div>
+                        <div class="arch-box-desc">Onglet PRO</div>
+                    </div>
+                    <div class="arch-box" style="border-color: var(--exe-color);">
+                        <div class="arch-box-title">dqe_exe_tab.py</div>
+                        <div class="arch-box-desc">Onglet EXE</div>
+                    </div>
+                    <div class="arch-box" style="border-color: var(--pgc-color);">
+                        <div class="arch-box-title">dqe_pgc_tab.py</div>
+                        <div class="arch-box-desc">Onglet PGC</div>
+                    </div>
+                    <div class="arch-box" style="border-color: var(--recover-color);">
+                        <div class="arch-box-title">dqe_recover_tab.py</div>
+                        <div class="arch-box-desc">Onglet RECOVER</div>
+                    </div>
+                    <div class="arch-box">
+                        <div class="arch-box-title">database_operations.py</div>
+                        <div class="arch-box-desc">Operations SQL</div>
+                    </div>
+                    <div class="arch-box">
+                        <div class="arch-box-title">excel_manager.py</div>
+                        <div class="arch-box-desc">Generation Excel</div>
+                    </div>
+                    <div class="arch-box">
+                        <div class="arch-box-title">layer_manager.py</div>
+                        <div class="arch-box-desc">Couches QGIS</div>
+                    </div>
+                    <div class="arch-box">
+                        <div class="arch-box-title">ui_components.py</div>
+                        <div class="arch-box-desc">Composants UI</div>
+                    </div>
+                    <div class="arch-box">
+                        <div class="arch-box-title">models.py</div>
+                        <div class="arch-box-desc">Classes Donnees</div>
+                    </div>
+                </div>
+
+                <!-- Dependencies -->
+                <h3 style="margin-top: 2rem;">Dependances</h3>
+                <table class="code-table" role="table">
+                    <caption class="sr-only">Dependances Python requises pour le plugin</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Package</th>
+                            <th scope="col">Version</th>
+                            <th scope="col">Usage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>psycopg2</code></td>
+                            <td>>= 2.8</td>
+                            <td>Connexion PostgreSQL</td>
+                        </tr>
+                        <tr>
+                            <td><code>pandas</code></td>
+                            <td>>= 1.0</td>
+                            <td>Manipulation donnees</td>
+                        </tr>
+                        <tr>
+                            <td><code>openpyxl</code></td>
+                            <td>>= 3.0</td>
+                            <td>Generation Excel</td>
+                        </tr>
+                        <tr>
+                            <td><code>PyQt5</code></td>
+                            <td>>= 5.12</td>
+                            <td>Interface graphique</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- Database Schema -->
+                <h3 style="margin-top: 2rem;">Schemas Base de Donnees</h3>
+                <div class="card-grid">
+                    <div class="feature-card">
+                        <h4>rip_avg_nge</h4>
+                        <p><code>dqe2()</code>, <code>dqe_exe()</code>, <code>dqe_pgc()</code>, <code>fddcpi2()</code>, <code>za_sro</code></p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>gc_exe</h4>
+                        <p><code>gestionnaire()</code>, <code>redevance_table()</code>, <code>t_cheminement</code>, <code>infra_pt_*</code></p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>dqe</h4>
+                        <p><code>dqejson</code> - Table d'archivage avec champs JSONB</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer" role="contentinfo">
+        <div class="footer-content">
+            <div class="footer-logo">DQE Chargeur</div>
+            <p class="footer-text">
+                Plugin developpe par DEVTEAM NGE pour le projet Auvergne Numerique
+            </p>
+            <p class="footer-version">
+                Version 3.3.1 | Compatible QGIS 3.28 - 3.45 | Contact: yadda@nge-es.com
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scroll for navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                const href = link.getAttribute('href');
+                if (href.startsWith('#')) {
+                    e.preventDefault();
+                    const target = document.querySelector(href);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            });
+        });
+
+        // Active nav link on scroll with aria-current
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 100;
+                if (window.scrollY >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.style.background = '';
+                link.style.color = '';
+                link.removeAttribute('aria-current');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.style.background = 'var(--light)';
+                    link.style.color = 'var(--primary)';
+                    link.setAttribute('aria-current', 'true');
+                }
+            });
+        });
+    </script>
+    
+    <!-- Theme Toggle Script -->
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+        
+        // Load saved theme
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+</body>
+</html>
