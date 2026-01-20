@@ -1,192 +1,156 @@
-# DQE Chargeur - Plugin QGIS
+# DQE Chargeur
 
-Plugin de génération automatique de DQE (Détail Quantitatif Estimatif) pour le projet Auvergne Numérique.
+Génère les DQE (Détail Quantitatif Estimatif) pour Auvergne Numérique.  
+Fait le boulot : requêtes SQL, couches QGIS, exports Excel.
 
-**Version:** 3.4.0  
-**Compatibilité:** QGIS 3.28+  
-**Auteur:** DEVTEAM NGE
+**v3.4.0** | QGIS 3.28+ | NGE
 
-## Architecture
+## Structure
 
 ```
 DQE Chargeur/
-├── __init__.py              # Point d'entrée QGIS
-├── dqe_chargeur.py          # Plugin principal (lifecycle)
-├── dqe_chargeur_dialog.py   # Dialog principal avec onglets
-├── dqe_pro_tab.py           # Onglet DQE PRO
-├── dqe_exe_tab.py           # Onglet DQE EXE
-├── dqe_pgc_tab.py           # Onglet DQE PGC
-├── dqe_recover_tab.py       # Onglet récupération archives
-├── dqe_utils.py             # Utilitaires (DB, Logger, Validation)
-├── database_operations.py   # Opérations SQL
-├── layer_manager.py         # Gestion couches QGIS
-├── excel_manager.py         # Génération rapports Excel
-├── ui_components.py         # Composants UI réutilisables
-├── models.py                # Classes de données
-└── files/                   # Templates Excel
+├── __init__.py              # entry point
+├── dqe_chargeur.py          # lifecycle plugin
+├── dqe_chargeur_dialog.py   # dialog principal
+├── dqe_pro_tab.py           # onglet PRO
+├── dqe_exe_tab.py           # onglet EXE  
+├── dqe_pgc_tab.py           # onglet PGC
+├── dqe_recover_tab.py       # onglet archives
+├── dqe_utils.py             # helpers divers
+├── database_operations.py   # SQL mgmt
+├── layer_manager.py         # couches QGIS
+├── excel_manager.py         # export xlsx
+├── ui_components.py         # widgets UI
+├── models.py                # dataclasses
+└── files/                   # templates xlsx
 ```
 
-## Fonctionnalités
+## Ce que ca fait
 
-### DQE PRO
-- Génération des quantitatifs projet
-- Support Transport et Distribution
-- Export Excel avec template spécialisé
-- Câbles découpés automatiques (Distribution)
+### PRO
+Quantitatifs projet, Transport ou Distribution.  
+Decoupe auto des cables en Distrib. Export xlsx.
 
-### DQE EXE
-- Quantitatifs exécution (projet + génie civil)
-- Intégration tranchées, chambres, poteaux, alvéoles
-- Template Excel dédié
-- Catégorisation automatique des couches
-- **Modes calcul blocage_ran :**
-  - Standard (TE/DE) : calcul normal
-  - Travaux (TT/DT) : exclut blocage_ran=true
-  - Blocage (TB/DB) : uniquement blocage_ran=true
+### EXE
+Quantitatifs execution : projet + GC (tranchees, chambres, poteaux, alveoles).  
+Gere le blocage_ran :
+- **TE/DE** : standard
+- **TT/DT** : exclut blocage
+- **TB/DB** : seulement blocage
 
-### DQE PGC
-- Attribution gestionnaire avec algorithme de proximité
-- Mode gestionnaire : corrections manuelles possibles avec régénération Excel
-- Mode direct : traitement automatique
-- Gestion intelligente des infrastructures mixtes (aérien + souterrain)
-- Calcul des redevances avec poteaux et alvéoles séparés
-- Support complet infrastructure aérienne (poteaux RAUV)
-- Support infrastructure souterraine (alvéoles PVC/PEHD)
-- Totaux Excel automatiques sans mélange d'unités
+### PGC
+Attribution gestionnaire via algo proximite.  
+Deux modes :
+- **Gestionnaire** : modif manuelle QGIS puis regen Excel
+- **Direct** : full auto
 
-### DQE RECOVER
-- Récupération DQE archivés depuis `dqe.dqejson`
-- Aperçu HTML avec watermark "ARCHIVÉ"
-- Recherche par SRO/code projet avec filtres
-- Régénération Excel à partir des données sauvegardées
-- Recréation des couches QGIS avec géométries WKT
-- Support codes projet : GC, TP, DP, TE, DE, TT, DT, TB, DB
+Gere infra mixte (aerien + souterrain), redevances separees poteaux/alveoles.
 
-## Utilisation
+### RECOVER
+Recupere les DQE archives depuis `dqe.dqejson`.  
+Preview HTML, regen Excel, recree couches QGIS.  
+Codes : GC, TP, DP, TE, DE, TT, DT, TB, DB
 
-### Prérequis
+## Usage
 
-- QGIS 3.1.0 ou supérieur
-- Accès à la base de données de télécommunications
-- Templates Excel disponibles dans le dossier `files/`
+### Prereqs
+- QGIS 3.28+
+- Acces base telecom
+- Templates dans `files/`
 
-### Workflow type
+### Workflow
+1. Saisir SRO (format XXX/XXX/XXX/XXX)
+2. Choisir type (Transport/Distribution)
+3. Troncon si PGC
+4. Executer
+5. Modif manuelle si besoin (mode gestionnaire)
+   - Corriger `cm_gest_do` dans la couche
+   - Transferer segments entre concessionnaires
+6. Regen Excel
+7. Done, redevances recalculees
 
-1. **Saisir le code SRO** (format XXX/XXX/XXX/XXX)
-2. **Sélectionner le type** (Transport/Distribution)
-3. **Choisir le tronçon** (pour DQE PGC)
-4. **Exécuter** le traitement
-5. **Modifier manuellement** si nécessaire (mode gestionnaire)
-   - Corriger les attributions `cm_gest_do` dans la couche QGIS
-   - Transférer des segments entre concessionnaires
-6. **Régénérer l'Excel** avec les modifications (bouton "Régénérer Excel")
-7. **Excel final** avec redevances recalculées automatiquement
+## Config
 
-## Configuration
+### Base de donnees
 
-### Base de données
+Connexion auto. Fonctions PostgreSQL utilisees :
 
-Le plugin se connecte automatiquement à la base configurée et utilise un ensemble complet de fonctions PostgreSQL spécialisées :
+#### `rip_avg_nge`
+| Fonction | Role |
+|----------|------|
+| `dqe2(sro, type)` | quantitatifs PRO |
+| `dqe_exe(sro, type)` | quantitatifs EXE |
+| `dqe_pgc(sro, troncon)` | attribution PGC |
+| `fddcpi2(sro)` | distrib cables |
+| `za_sro` | ref codes SRO |
 
-#### Schéma `rip_avg_nge`
+#### `gc_exe`
+| Fonction | Role |
+|----------|------|
+| `gestionnaire(sro, troncon)` | algo proximite, retourne `nb_pot_ac` |
+| `redevance_table(sro, troncon)` | calcul redevances |
+| `t_cheminement` | table principale |
+| `infra_pt_chb` | chambres |
+| `infra_pt_pot` | poteaux RAUV |
 
-- **`dqe2(sro, type)`** - Génération DQE PRO (quantitatifs projet)
-- **`dqe_exe(sro, type)`** - Génération DQE EXE (quantitatifs exécution)
-- **`dqe_pgc(sro, troncon)`** - Génération DQE PGC (attribution gestionnaire)
-- **`fddcpi2(sro)`** - Distribution des câbles par SRO
-- **`za_sro`** - Table de référence des codes SRO
+`cm_typ_imp` : 0=aerien, 7=souterrain
 
-#### Schéma `gc_exe`
+#### Flux SQL
 
-- **`gestionnaire(sro, troncon)`** - Attribution gestionnaire avec algorithme de proximité/parallélisme
-  - Retourne `nb_pot_ac` (nombre poteaux) pour infrastructures aériennes
-  - Support `cm_typ_imp` (0=aérien, 7=souterrain) pour infrastructures mixtes
-- **`redevance_table(sro, troncon)`** - Calcul des redevances par gestionnaire
-  - **Aérien** : Colonnes `Poteaux` (unités) + `Longueur` (ml)
-  - **Souterrain** : Colonnes dynamiques par types d'alvéoles (ml)
-  - **Mixte** : Poteaux + Alvéoles avec unités séparées
-- **`t_cheminement`** - Table principale du cheminement
-- **`infra_pt_chb`** - Infrastructures ponctuelles (chambres)
-- **`infra_pt_pot`** - Infrastructures ponctuelles (poteaux RAUV)
-- **`infra_pt_autres`** - Autres infrastructures ponctuelles
+**PRO** : `dqe2()` et c'est tout
 
-#### Workflow des fonctions
+**EXE** : `dqe_exe()` inclut GC
 
-**DQE PRO :**
+**PGC** :
+1. `dqe_pgc()` - donnees brutes
+2. `gestionnaire()` - attribution
+3. `redevance_table()` - redevances
+4. Mode gestionnaire : regen avec modifs couche QGIS
 
-- `rip_avg_nge.dqe2()` → Quantitatifs projet
+### Templates
+| Fichier | Usage |
+|---------|-------|
+| `template_dqe_pro.xlsx` | quantitatifs projet |
+| `template_dqe_exe.xlsx` | quantitatifs exec |
+| `template_dqe_pgc.xlsx` | gestionnaire + feuille REDEVANCE |
 
-**DQE EXE :**
+## Details techniques
 
-- `rip_avg_nge.dqe_exe()` → Quantitatifs exécution + génie civil
+### Redevances
 
-**DQE PGC :**
+Gestion auto selon type infra :
 
-1. `rip_avg_nge.dqe_pgc()` → Données PGC brutes
-2. `gc_exe.gestionnaire()` → Attribution gestionnaire intelligente
-3. `gc_exe.redevance_table()` → Calcul des redevances finales
-   - **Infrastructure aérienne** : Seuls poteaux RAUV comptés
-   - **Infrastructure souterraine** : Alvéoles par types (PVC/PEHD)
-   - **Infrastructure mixte** : Poteaux + Alvéoles combinés
-4. **Mode gestionnaire** : Régénération Excel avec données modifiées de couche QGIS
+**Aerien** : poteaux RAUV (`nb_pot_ac`), colonnes Poteaux + Longueur
 
-### Templates Excel
+**Souterrain** : alveoles par types (PVC/PEHD), colonnes dynamiques, calcul `nb_alv * long`
 
-- `template_dqe_pro.xlsx` : Quantitatifs projet
-- `template_dqe_exe.xlsx` : Quantitatifs exécution
-- `template_dqe_pgc.xlsx` : Attribution gestionnaire avec feuille REDEVANCE automatique
+**Mixte** : les deux combines, totaux separes (pas de melange ml/unites)
 
-## Fonctionnalités Avancées
+### Mode gestionnaire
 
-### Calcul des Redevances Intelligentes
+1. Charge couche avec `nb_pot_ac`
+2. Modif `cm_gest_do` dans QGIS
+3. Regen Excel recalcule tout
+4. Noms couches uniques auto
+5. Prend toujours la couche la plus recente
 
-Le plugin gère automatiquement les différents types d'infrastructures :
+## Docs
 
-#### **Infrastructure Aérienne Pure**
-- **Données** : Poteaux RAUV uniquement (`nb_pot_ac`)
-- **Excel** : Colonnes `Poteaux` (unités) + `Longueur` (ml)
-- **Totaux** : Poteaux séparés des longueurs (unités différentes)
+Dans `docs/` :
+- `DQE_PRO.md` / `DQE_EXE.md` / `DQE_PGC.md`
+- `BLOCAGE_RAN_ARCHITECTURE.md` - modes RAN
+- `AUDIT_COMPLET.md` - audit technique
 
-#### **Infrastructure Souterraine Pure**
-- **Données** : Alvéoles par types (`2 PVC 42/45`, `4 PEHD 33/40`, etc.)
-- **Excel** : Colonnes dynamiques par composition
-- **Calcul** : `nb_alvéoles × longueur_segment`
+## Deps
 
-#### **Infrastructure Mixte (Aérien + Souterrain)**
-- **Parties aériennes** → Poteaux RAUV + longueurs aériennes
-- **Parties souterraines** → Alvéoles par types
-- **Excel** : Colonnes alvéoles + colonne "Aérien" (ml) + colonne "Poteaux_nb_unités"
-- **Totaux séparés** : Évite le mélange mètres linéaires / unités
+| Package | Min | |
+|---------|-----|---|
+| psycopg2 | 2.8 | PostgreSQL |
+| pandas | 1.0 | data |
+| openpyxl | 3.0 | xlsx |
+| PyQt5 | 5.12 | UI |
 
-### Mode Gestionnaire Avancé
+---
 
-1. **Chargement couche** : Tous les segments avec `nb_pot_ac` inclus
-2. **Modification manuelle** : Changement `cm_gest_do` dans QGIS
-3. **Régénération Excel** : Recalcul complet avec nouvelles attributions
-4. **Évite les doublons** : Noms de couches uniques automatiques
-5. **Sélection intelligente** : Prend toujours la couche la plus récente
-
-## Documentation Technique
-
-Voir le dossier `docs/` pour la documentation détaillée :
-- `DQE_PRO.md` - Documentation DQE PRO
-- `DQE_EXE.md` - Documentation DQE EXE
-- `DQE_PGC.md` - Documentation DQE PGC
-- `BLOCAGE_RAN_ARCHITECTURE.md` - Architecture modes travaux RAN
-- `AUDIT_COMPLET.md` - Rapport d'audit technique
-
-## Dépendances
-
-| Package | Version | Usage |
-|---------|---------|-------|
-| psycopg2 | >= 2.8 | Connexion PostgreSQL |
-| pandas | >= 1.0 | Manipulation données |
-| openpyxl | >= 3.0 | Génération Excel |
-| PyQt5 | >= 5.12 | Interface graphique |
-
-## Support
-
-Développé par DEVTEAM NGE pour le projet Auvergne Numérique.
-
-**Version :** 3.4.0  
-**Contact :** yadda@ext.nge.fr 
+NGE - Auvergne Numerique  
+v3.4.0 | yadda@ext.nge.fr

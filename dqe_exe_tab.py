@@ -158,7 +158,8 @@ class DQEExeTab(QWidget):
         if not sro:
             QMessageBox.warning(self, "Erreur", "Veuillez saisir un SRO")
             return
-        self.execute_button.setEnabled(False)
+        self.execute_button.setVisible(False)
+        self.validate_button.setVisible(False)
         self.current_blocage = blocage  # Stocker pour nommage Excel
         
         try:
@@ -279,6 +280,8 @@ class DQEExeTab(QWidget):
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
                 self.progress_timer.deleteLater()
+            self.execute_button.setVisible(True)
+            self.validate_button.setVisible(True)
             self.execute_button.setEnabled(True)
             if hasattr(self, 'thread'):
                 self.thread.quit()
