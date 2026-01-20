@@ -20,14 +20,10 @@ from PyQt5.QtWidgets import (
 from qgis.PyQt.QtCore import QObject
 from qgis.core import QgsProject, Qgis, QgsApplication
 from qgis import utils
-
-# Import des modules du plugin
 from .ui_components import SROComboBox, ProgressWidget
 from .layer_manager import LayerManager
 from .database_operations import DatabaseOperations
 from .excel_manager import ExcelManager
-
-# Récupération des singletons depuis le module principal
 try:
     iface = utils.iface
     from . import dqe_chargeur_dialog
@@ -72,20 +68,14 @@ class DQEWorker(QObject):
             if self.is_cancelled:
                 self.finished.emit(False, None, "Traitement annulé")
                 return
-            
-            # Préparation
             self.progress_value = 25
             if self.is_cancelled:
                 self.finished.emit(False, None, "Traitement annulé")
                 return
-                
-            # Préparation de la requête
             self.progress_value = 35
             if self.is_cancelled:
                 self.finished.emit(False, None, "Traitement annulé")
                 return
-            
-            # Exécution de la requête principale
             self.progress_value = 40
             
             if self.operation_type == "PRO":
@@ -100,19 +90,14 @@ class DQEWorker(QObject):
             if self.is_cancelled:
                 self.finished.emit(False, None, "Traitement annulé")
                 return
-            
-            # Traitement des résultats
             self.progress_value = 85
-            
-            # Filtrage si nécessaire
-            if self.operation_type == "PRO" and self.results:
-                self.results = DQEProTab.filter_results_by_template(self.results)
+            # Filtrage désactivé - dqe2 retourne déjà les données dans l'ordre du template
+            # if self.operation_type == "PRO" and self.results:
+            #     self.results = DQEProTab.filter_results_by_template(self.results)
             
             if self.is_cancelled:
                 self.finished.emit(False, None, "Traitement annulé")
                 return
-                
-            # Finalisation
             self.progress_value = 90
             
             success_message = f"DQE {self.operation_type} terminé avec succès"
@@ -134,28 +119,36 @@ class DQEProTab(QWidget):
     
     @staticmethod
     def filter_results_by_template(results):
-        """Filtre les résultats DQE Pro pour ne garder que les lignes présentes dans le template CSV"""
+        """Filtre les résultats DQE Pro pour ne garder que les lignes présentes dans le template Excel"""
         try:
-            # Chemin vers le template CSV
             plugin_dir = os.path.dirname(__file__)
-            template_path = os.path.join(plugin_dir, 'files', 'template_dqe_pro.csv')
+            template_path = os.path.join(plugin_dir, 'files', 'template_dqe_pro.xlsx')
             
             if not os.path.exists(template_path):
-                print(f" Template CSV non trouvé: {template_path}")
+                print(f"Template Excel non trouvé: {template_path}")
                 return results  # Retourner tous les résultats si pas de template
             
-            # Charger les désignations du template
-            template_designations = set()
-            with open(template_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f, delimiter=';')
-                for row in reader:
-                    designation = row.get('Désignation', '').strip()
-                    if designation:
-                        template_designations.add(designation)
+            # Lecture du template Excel
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(template_path, read_only=True)
+                sheet = wb.active
+                
+                template_designations = set()
+                for row in range(1, sheet.max_row + 1):
+                    cell_value = sheet.cell(row=row, column=1).value
+                    if cell_value and isinstance(cell_value, str):
+                        designation = cell_value.strip()
+                        if designation and designation != "Désignation":
+                            template_designations.add(designation)
+                
+                wb.close()
+                print(f"Template Excel chargé: {len(template_designations)} désignations")
+                
+            except ImportError:
+                print("openpyxl non disponible, pas de filtrage")
+                return results
             
-            print(f"📋 Template chargé: {len(template_designations)} désignations")
-            
-            # Filtrer les résultats
             filtered_results = []
             excluded_count = 0
             
@@ -166,23 +159,28 @@ class DQEProTab(QWidget):
                     filtered_results.append(result)
                 else:
                     excluded_count += 1
-                    print(f" EXCLU (non dans template): {designation}")
+                    print(f"EXCLU (non dans template): {designation}")
             
-            print(f" Filtrage terminé: {len(filtered_results)} lignes conservées, {excluded_count} exclues")
+            print(f"Filtrage terminé: {len(filtered_results)} lignes conservées, {excluded_count} exclues")
             return filtered_results
             
         except Exception as e:
-            print(f" Erreur lors du filtrage: {str(e)}")
+            print(f"Erreur lors du filtrage: {str(e)}")
             return results  # En cas d'erreur, retourner tous les résultats
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layers_loaded = []
         self.layer_group = None
+        self.dqe_results = []  # Stockage des résultats SQL pour validation
+        self.current_sro = None  # SRO courant pour validation
+        self.current_type = None  # Type courant (T/D) pour validation
         self.setup_ui()
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(4)
         
         config_group = QGroupBox("Configuration DQE PRO")
         config_layout = QFormLayout(config_group)
@@ -198,12 +196,15 @@ class DQEProTab(QWidget):
         layout.addWidget(config_group)
         
         buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(8)  # Espacement réduit entre boutons
         
         self.execute_button = QPushButton("Exécuter DQE PRO")
+        self.execute_button.setToolTip("Génère le DQE et charge les couches QGIS")
         self.execute_button.clicked.connect(self.execute_dqe_pro)
         buttons_layout.addWidget(self.execute_button)
         
         self.validate_button = QPushButton("Valider DQE")
+        self.validate_button.setToolTip("Enregistre le DQE dans la base de données")
         self.validate_button.clicked.connect(self.validate_dqe_pro)
         buttons_layout.addWidget(self.validate_button)
         
@@ -211,8 +212,6 @@ class DQEProTab(QWidget):
         
         self.progress_widget = ProgressWidget()
         layout.addWidget(self.progress_widget)
-        
-        layout.addStretch()
     
     def execute_dqe_pro(self):
         sro = self.sro_input.lineEdit().text().strip()
@@ -221,25 +220,18 @@ class DQEProTab(QWidget):
         if not sro:
             QMessageBox.warning(self, "Erreur", "Veuillez saisir un SRO")
             return
-        
-        # Désactiver le bouton pendant le traitement
         self.execute_button.setEnabled(False)
         
         try:
             self.progress_widget.start_operation("DQE PRO")
-            
-            # Créer le worker et le thread
             self.worker = DQEWorker("PRO", sro, p_type)
             self.thread = QThread()
-            
-            # Timer pour progression fluide dans le thread principal
             self.progress_timer = QTimer()
             self.current_progress = 10
             self.progress_increment = 1
             
             def update_smooth_progress():
                 if hasattr(self, 'worker') and self.worker.is_running:
-                    # Progression fluide vers la valeur cible du worker
                     target_progress = getattr(self.worker, 'progress_value', 10)
                     
                     if self.current_progress < target_progress:
@@ -263,15 +255,11 @@ class DQEProTab(QWidget):
             
             self.progress_timer.timeout.connect(update_smooth_progress)
             self.progress_timer.start(100)  # Mise à jour toutes les 100ms pour fluidité
-            
-            # Connecter les signaux
             self.worker.moveToThread(self.thread)
             self.worker.finished.connect(self.on_dqe_pro_finished)
             self.progress_widget.progress_cancelled.connect(self.worker.cancel)
             self.thread.started.connect(self.worker.run)
             self.thread.finished.connect(self.thread.deleteLater)
-            
-            # Démarrer le thread
             self.thread.start()
             
         except Exception as e:
@@ -284,32 +272,26 @@ class DQEProTab(QWidget):
     def on_dqe_pro_finished(self, success: bool, results, message: str):
         """Callback appelé quand le traitement DQE PRO est terminé"""
         try:
-            # Continuer la progression fluide au lieu de l'arrêter brutalement
             if hasattr(self, 'progress_timer'):
-                # Changer le comportement du timer pour la phase post-traitement
                 self.post_processing = True
                 
             if success and results:
-                # Traitement post-requête dans le thread principal
                 self.smooth_progress_to(92, "Création des couches...")
-                
-                # Forcer le rafraîchissement de l'interface
                 QApplication.processEvents()
-                
-                # Créer le groupe de couches
                 current_date = time.strftime("%Y-%m-%d_%H%M%S")
                 sro = self.sro_input.lineEdit().text().strip()
                 sro_safe = sro.replace('/', '_')
                 group_name = f"DQE_PRO_{sro_safe}_{current_date}"
                 self.layer_group = LayerManager.create_layer_group(group_name)
                 
-                # Charger les couches
+                # Stockage des résultats SQL pour validation ultérieure
+                self.dqe_results = results
+                self.current_sro = sro
+                self.current_type = self.type_combo.currentData()
+                print(f"DEBUG: {len(results)} resultats SQL stockes pour validation")
+                
                 created_layers = self._load_organized_layers(results, sro, self.type_combo.currentData())
-                
-                # Forcer le rafraîchissement
                 QApplication.processEvents()
-                
-                # Chargement des câbles découpés pour Distribution
                 if self.type_combo.currentData() == 'D':
                     print("\n=== CHARGEMENT CÂBLES DÉCOUPÉS (Distribution) ===")
                     self.smooth_progress_to(95, "Chargement câbles découpés...")
@@ -320,13 +302,9 @@ class DQEProTab(QWidget):
                     )
                     created_layers.extend(dist_layers)
                     print(f"=== CÂBLES DÉCOUPÉS AJOUTÉS: {len(dist_layers)} ===")
-                
-                # Créer le rapport Excel
                 self.smooth_progress_to(98, "Génération du rapport Excel...")
                 QApplication.processEvents()
                 ExcelManager.create_excel_report(results, sro, "PRO")
-                
-                # Finaliser
                 self.smooth_progress_to(100, "Finalisation...")
                 QApplication.processEvents()
                 
@@ -350,11 +328,9 @@ class DQEProTab(QWidget):
             self.progress_widget.complete_operation(False, error_msg)
             QMessageBox.critical(self, "Erreur", error_msg)
         finally:
-            # Arrêter le timer et nettoyer
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
                 self.progress_timer.deleteLater()
-            # Réactiver le bouton et nettoyer
             self.execute_button.setEnabled(True)
             if hasattr(self, 'thread'):
                 self.thread.quit()
@@ -363,16 +339,14 @@ class DQEProTab(QWidget):
     def smooth_progress_to(self, target_value, status):
         """Fait évoluer la progression en douceur vers une valeur cible"""
         if hasattr(self, 'current_progress'):
-            # Mise à jour progressive vers la cible
             steps = max(1, int((target_value - self.current_progress) / 2))
             for i in range(steps):
-                if self.current_progress < target_value:
-                    self.current_progress += (target_value - self.current_progress) / (steps - i)
+                remaining = steps - i
+                if remaining > 0 and self.current_progress < target_value:
+                    self.current_progress += (target_value - self.current_progress) / remaining
                     self.progress_widget.update_progress(int(self.current_progress), status)
                     QApplication.processEvents()
-                    time.sleep(0.05)  # Petite pause pour rendre la progression visible
-            
-            # S'assurer qu'on atteint la valeur cible
+                    time.sleep(0.05)
             self.current_progress = target_value
             self.progress_widget.update_progress(int(self.current_progress), status)
     
@@ -488,8 +462,6 @@ class DQEProTab(QWidget):
             
             categories[main_category].append(task_data)
             print(f"     Assigné à la catégorie: {main_category}")
-        
-        # Charger les couches par catégorie
         for category_name, tasks in categories.items():
             if not tasks:
                 continue
@@ -529,136 +501,152 @@ class DQEProTab(QWidget):
         return created_layers
     
     def validate_dqe_pro(self):
-        """Valide et sauvegarde le DQE PRO dans la base de données"""
+        """Valide et sauvegarde le DQE PRO dans la base de données
+        Structure simplifiée: 1 ligne avec categorie='dqe_result' et tout le DQE en JSON
+        """
         try:
-            # Vérifications préliminaires
             sro = self.sro_input.currentText().strip()
             if not sro:
                 QMessageBox.warning(self, "Validation DQE", "Veuillez sélectionner un SRO")
                 return
             
-            # Récupérer les couches directement depuis le projet QGIS au lieu d'utiliser les références stockées
-            if not self.layer_group:
-                QMessageBox.warning(self, "Validation DQE", "Aucun groupe de couches DQE PRO trouvé")
+            if not self.dqe_results:
+                QMessageBox.warning(self, "Validation DQE", 
+                    "Aucun résultat DQE trouvé.\nVeuillez d'abord exécuter le DQE PRO.")
                 return
             
-            # Récupérer toutes les couches du groupe DQE PRO depuis le projet QGIS
-            project_layers = []
-            def collect_layers(group):
-                """Collecte récursivement toutes les couches d'un groupe"""
+            type_data = self.type_combo.currentData()
+            projet_code = "TP" if type_data == "T" else "DP"
+            user_name = _db_manager._config.user if _db_manager and _db_manager._config else "unknown"
+            
+            # Construire le tableau JSON - TOUTES les lignes dans l'ordre exact
+            dqe_data = []
+            for result in self.dqe_results:
+                designation = result.get("Désignation") or result.get("designation") or ""
+                quantite = result.get("Quantité") or result.get("quantite")
+                unite = result.get("Unité") or result.get("unite") or ""
+                ids = result.get("ids") or result.get("Ids") or ""
+                
+                try:
+                    quantite_num = float(quantite) if quantite is not None else 0
+                except (ValueError, TypeError):
+                    quantite_num = 0
+                
+                # Garder TOUTES les lignes (même quantité 0) pour reconstitution exacte
+                dqe_data.append({
+                    'designation': designation,
+                    'quantite': quantite_num,
+                    'unite': unite,
+                    'ids': str(ids) if ids else None
+                })
+            
+            if not dqe_data:
+                QMessageBox.warning(self, "Validation DQE", "Aucune donnée DQE")
+                return
+            
+            print(f"Validation DQE PRO: {len(dqe_data)} lignes à enregistrer")
+            
+            # Une seule insertion avec tout le DQE
+            with _db_manager.get_cursor() as cursor:
+                query = """
+                    INSERT INTO dqe.dqejson 
+                    (sro, nom_dqe, projet, categorie, champs, user_name, version_projet) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (
+                    sro,
+                    f"DQE_PRO_{sro}",
+                    projet_code,
+                    'dqe_result',  # Catégorie unique
+                    json.dumps(dqe_data),  # Tableau JSON complet
+                    user_name,
+                    None  # Version auto-assignée par trigger
+                ))
+            
+            print(f"Validation: 1 ligne dqe_result avec {len(dqe_data)} elements")
+            
+            # Sauvegarde de TOUTES les couches avec géométries
+            layers_count = 0
+            if self.layer_group:
+                layers_count = self._save_all_layers(sro, projet_code, user_name)
+            
+            total_saved = len(dqe_data) + layers_count
+            print(f"Validation terminee: {len(dqe_data)} resultats SQL + {layers_count} couches")
+            
+            QMessageBox.information(
+                self, 
+                "Validation DQE PRO", 
+                f"Validation terminee!\n\n"
+                f"- SRO: {sro}\n"
+                f"- Type: {projet_code}\n"
+                f"- Resultats DQE: {len(dqe_data)}\n"
+                f"- Couches archivees: {layers_count}\n"
+                f"- Total: {total_saved} elements"
+            )
+            
+        except Exception as e:
+            print(f"Erreur validation: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            if _logger:
+                _logger.error("Erreur validation DQE PRO", exception=e)
+            QMessageBox.critical(self, "Erreur", f"Erreur validation DQE PRO: {str(e)}")
+    
+    def _save_all_layers(self, sro, projet_code, user_name):
+        """Sauvegarde TOUTES les couches du groupe dans dqejson
+        Chaque couche est stockee comme FeatureCollection avec geometries
+        """
+        layers_count = 0
+        try:
+            def collect_all_layers(group):
+                """Recherche recursive de toutes les couches"""
+                layers = []
                 for child in group.children():
                     if hasattr(child, 'layer'):
                         layer = child.layer()
                         if layer and layer.isValid():
-                            project_layers.append(layer)
+                            layers.append(layer)
                     elif hasattr(child, 'children'):
-                        collect_layers(child)
+                        layers.extend(collect_all_layers(child))
+                return layers
             
-            collect_layers(self.layer_group)
+            all_layers = collect_all_layers(self.layer_group)
+            print(f"Couches a archiver: {len(all_layers)}")
             
-            if not project_layers:
-                QMessageBox.warning(self, "Validation DQE", "Aucune couche DQE PRO valide trouvée dans le projet")
-                return
-            
-            print(f"DEBUG: Validation DQE PRO - {len(project_layers)} couches trouvées dans le projet")
-            
-            # Détermination du code projet selon le type sélectionné
-            type_data = self.type_combo.currentData()
-            if type_data == "T":
-                projet_code = "TP"  # Transport PRO
-            else:
-                projet_code = "DP"  # Distribution PRO
-            
-            # Récupération des informations utilisateur
-            user_name = _db_manager._config.user if _db_manager._config else "unknown"
-            
-            success_count = 0
-            total_layers = len(project_layers)
-            
-            # Sauvegarde de chaque couche dans dqe.dqejson
-            for i, layer in enumerate(project_layers):
-                print(f"DEBUG: Couche {i+1}/{total_layers}: {layer.name() if layer else 'SANS NOM'}")
-                
-                # Double vérification de la validité de la couche
-                if not layer or not layer.isValid():
-                    print(f"DEBUG: - Couche INVALIDE, ignorée")
-                    continue
-                
-                # Vérifier que la couche n'a pas été supprimée
+            for layer in all_layers:
                 try:
-                    layer_name = layer.name()
-                    feature_count = layer.featureCount()
-                    print(f"DEBUG: - Couche valide: {layer_name}, {feature_count} features")
-                except RuntimeError as e:
-                    print(f"DEBUG: - Couche supprimée, ignorée: {str(e)}")
-                    continue
-                
-                try:
-                    # Transaction séparée pour chaque couche
-                    with _db_manager.get_cursor() as cursor:
-                        # Extraction des données de la couche
-                        layer_data = self._extract_layer_data(layer)
-                        print(f"DEBUG: - Données extraites: {len(layer_data.get('features', []))} features")
-                        
-                        # Insertion dans dqe.dqejson
-                        query = """
-                            INSERT INTO dqe.dqejson 
-                            (sro, nom_dqe, projet, categorie, champs, user_name, version_projet) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """
-                        
-                        print(f"DEBUG: - Insertion SQL pour {layer_name}")
-                        cursor.execute(query, (
-                            sro,
-                            f"DQE_PRO_{sro}",
-                            projet_code,
-                            layer_name,
-                            json.dumps(layer_data),
-                            user_name,
-                            "dqe"
-                        ))
-                        
-                        success_count += 1
-                        print(f"DEBUG: - Couche {layer_name} sauvegardée avec succès")
-                        
+                    layer_data = self._extract_layer_data(layer)
+                    if layer_data['features']:
+                        with _db_manager.get_cursor() as cursor:
+                            query = """
+                                INSERT INTO dqe.dqejson 
+                                (sro, nom_dqe, projet, categorie, champs, user_name, version_projet) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """
+                            cursor.execute(query, (
+                                sro,
+                                f"DQE_PRO_{sro}",
+                                projet_code,
+                                layer.name(),
+                                json.dumps(layer_data),
+                                user_name,
+                                None  # Version auto-assignée par trigger
+                            ))
+                        layers_count += 1
+                        print(f"  Couche archivee: {layer.name()} ({len(layer_data['features'])} features)")
                 except Exception as e:
-                    layer_name_safe = "UNKNOWN"
-                    try:
-                        layer_name_safe = layer.name() if layer else "UNKNOWN"
-                    except:
-                        pass
-                    print(f"DEBUG: - ERREUR pour {layer_name_safe}: {str(e)}")
-                    import traceback
-                    print(f"DEBUG: - Traceback: {traceback.format_exc()}")
-                    if _logger:
-                        _logger.error(f"Erreur validation couche {layer_name_safe}: {str(e)}")
-            
-            print(f"DEBUG: Validation terminée: {success_count}/{total_layers} couches sauvegardées")
-            
-            # Message de confirmation
-            QMessageBox.information(
-                self, 
-                "Validation DQE PRO", 
-                f"Validation terminée avec succès !\n\n"
-                f"- SRO: {sro}\n"
-                f"- Type: {projet_code}\n"
-                f"- Couches sauvegardées: {success_count}/{total_layers}"
-            )
-            
+                    print(f"  Erreur archivage {layer.name()}: {str(e)}")
+                    
         except Exception as e:
-            print(f"DEBUG: Erreur générale validation: {str(e)}")
-            import traceback
-            print(f"DEBUG: Traceback général: {traceback.format_exc()}")
-            if _logger:
-                _logger.error("Erreur lors de la validation DQE PRO", exception=e)
-            QMessageBox.critical(self, "Erreur", f"Erreur lors de la validation DQE PRO: {str(e)}")
-    
+            print(f"Erreur archivage couches: {str(e)}")
+        
+        return layers_count
+
     def _extract_layer_data(self, layer):
-        """Extrait les données d'une couche QGIS pour sauvegarde JSON"""
+        """Extrait les donnees d'une couche QGIS pour sauvegarde JSON"""
         features_data = []
         
         try:
-            # Vérifier que la couche est toujours valide
             if not layer or not layer.isValid():
                 print(f"WARNING: Couche invalide lors de l'extraction des données")
                 return {
@@ -666,8 +654,6 @@ class DQEProTab(QWidget):
                     'features': [],
                     'crs': None
                 }
-            
-            # Vérifier l'accès aux méthodes de la couche
             layer_name = layer.name()  # Test d'accès
             layer_fields = layer.fields()  # Test d'accès
             
@@ -677,13 +663,10 @@ class DQEProTab(QWidget):
                         'geometry': feature.geometry().asWkt() if feature.geometry() else None,
                         'attributes': {}
                     }
-                    
-                    # Récupération des attributs
                     for field in layer_fields:
                         field_name = field.name()
                         try:
                             value = feature[field_name]
-                            # Conversion des valeurs pour JSON
                             if isinstance(value, (int, float, str, bool)) or value is None:
                                 feature_dict['attributes'][field_name] = value
                             else:
@@ -697,8 +680,6 @@ class DQEProTab(QWidget):
                 except Exception as e:
                     print(f"WARNING: Erreur lecture feature: {str(e)}")
                     continue
-            
-            # Récupération du CRS
             crs_authid = None
             try:
                 if layer.crs() and layer.crs().isValid():
