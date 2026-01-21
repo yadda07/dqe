@@ -1,6 +1,8 @@
 -- FUNCTION: rip_avg_nge.dqe2(text, text, text)
 -- p_blocage: NULL/'E' (standard), 'T' (travaux sans blocage), 'B' (blocage uniquement)
 
+-- Supprimer l'ancienne version 2 params pour éviter conflit de signature
+DROP FUNCTION IF EXISTS rip_avg_nge.dqe2(text, text);
 -- DROP FUNCTION IF EXISTS rip_avg_nge.dqe2(text, text, text);
 
 CREATE OR REPLACE FUNCTION rip_avg_nge.dqe2(

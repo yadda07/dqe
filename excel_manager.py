@@ -32,7 +32,9 @@ class ExcelManager:
             'PGC': 'template_dqe_pgc.xlsx'
         }
         
-        template_name = template_files.get(operation_type.upper(), 'template_dqe_pro.xlsx')
+        # Extract base type (EXE_TE -> EXE, PRO -> PRO)
+        base_type = operation_type.upper().split('_')[0]
+        template_name = template_files.get(base_type, 'template_dqe_pro.xlsx')
         template_path = os.path.join(plugin_dir, 'files', template_name)
         
         print(f"Template recherché pour {operation_type}: {template_path}")
@@ -145,7 +147,9 @@ class ExcelManager:
         if df.empty:
             return
         
-        if operation_type.upper() == 'EXE':
+        # Check base type (EXE_TE -> EXE)
+        base_type = operation_type.upper().split('_')[0]
+        if base_type == 'EXE':
             return ExcelManager._fill_exe_template(sheet, df)
         else:
             updated_rows = []

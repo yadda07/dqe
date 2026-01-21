@@ -27,8 +27,8 @@ from PyQt5.QtWidgets import (
     QGroupBox, QFormLayout, QCheckBox, QSpinBox, QFrame, QDialog, 
     QDialogButtonBox, QCompleter
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QStringListModel, QThread, QObject
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QStringListModel, QThread, QObject, QUrl
+from PyQt5.QtGui import QFont, QColor, QDesktopServices
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsDataSourceUri, QgsField,
@@ -768,7 +768,9 @@ class ExcelManager:
             'PGC': 'template_dqe_pgc.xlsx'
         }
         
-        template_name = template_files.get(operation_type.upper(), 'template_dqe_pro.xlsx')
+        # Extract base type (EXE_TE -> EXE, PRO -> PRO)
+        base_type = operation_type.upper().split('_')[0]
+        template_name = template_files.get(base_type, 'template_dqe_pro.xlsx')
         template_path = os.path.join(plugin_dir, 'files', template_name)
         
         print(f"Template recherché pour {operation_type}: {template_path}")
@@ -965,7 +967,9 @@ class ExcelManager:
         if df.empty:
             return
         
-        if operation_type.upper() == 'EXE':
+        # Check base type (EXE_TE -> EXE)
+        base_type = operation_type.upper().split('_')[0]
+        if base_type == 'EXE':
             return ExcelManager._fill_exe_template(sheet, df)
         else:
             return ExcelManager._fill_pro_template(sheet, df)
@@ -1132,6 +1136,9 @@ class DQEChargeur(QDialog):
         self.resize(400, 320)
         self.setModal(False)
         
+        # Police Corbel globale
+        self.setStyleSheet("QWidget { font-family: 'Corbel', 'Segoe UI', sans-serif; }")
+        
         self.setup_ui()
         
         if _logger:
@@ -1211,68 +1218,15 @@ class DQEChargeur(QDialog):
             self.resize(400, 320)
     
     def show_help(self):
-        help_text = """
-        <style>
-        body { font-family: 'Segoe UI', sans-serif; }
-        h2 { color: #1a365d; margin-bottom: 12px; font-size: 16px; border-bottom: 2px solid #3182ce; padding-bottom: 6px; }
-        h3 { color: #2c5282; margin: 14px 0 8px 0; font-size: 13px; }
-        .module { background: linear-gradient(135deg, #f7fafc, #edf2f7); padding: 12px; margin: 10px 0; border-radius: 6px; border-left: 3px solid #3182ce; }
-        .module.pro { border-left-color: #805ad5; }
-        .module.exe { border-left-color: #dd6b20; }
-        .module.pgc { border-left-color: #38a169; }
-        .module.recover { border-left-color: #3182ce; }
-        .param { color: #c53030; font-weight: 600; }
-        .desc { color: #4a5568; }
-        .feature { color: #276749; }
-        .new { color: #c05621; font-weight: 600; font-size: 11px; }
-        .version { background: #ebf8ff; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 11px; color: #2b6cb0; }
-        ul { margin: 4px 0; padding-left: 16px; }
-        li { margin: 2px 0; font-size: 12px; }
-        </style>
+        """Ouvre la documentation HTML complete"""
+        plugin_dir = os.path.dirname(os.path.abspath(__file__))
+        doc_path = os.path.join(plugin_dir, "docs", "index.html")
         
-        <h2>DQE Chargeur - Guide v3.4.0</h2>
-        
-        <div class="version">QGIS 3.28+ | Auvergne Numerique | 4 modules</div>
-        
-        <div class="module pro">
-        <h3 style="color: #805ad5;">DQE PRO</h3>
-        <ul>
-        <li><span class="param">SRO</span> : Code SRO avec autocompletion</li>
-        <li><span class="param">Type</span> : Transport (TP) ou Distribution (DP)</li>
-        <li><span class="feature">Cables, BPE, PA, PBO avec geometries</span></li>
-        </ul>
-        </div>
-        
-        <div class="module exe">
-        <h3 style="color: #dd6b20;">DQE EXE</h3>
-        <ul>
-        <li><span class="param">Mode</span> : Standard (TE/DE), Travaux (TT/DT), Blocage (TB/DB)</li>
-        <li><span class="feature">Projet + Genie Civil (tranchees, chambres, poteaux)</span></li>
-        <li><span class="new">Filtrage blocage_ran pour separation travaux</span></li>
-        </ul>
-        </div>
-        
-        <div class="module pgc">
-        <h3 style="color: #38a169;">DQE PGC</h3>
-        <ul>
-        <li><span class="param">Troncon</span> : Selection par GC</li>
-        <li><span class="param">Mode Gestionnaire</span> : Corrections manuelles + regeneration</li>
-        <li><span class="param">Mode Direct</span> : Export automatique</li>
-        <li><span class="feature">Algorithme proximite + redevances</span></li>
-        </ul>
-        </div>
-        
-        <div class="module recover">
-        <h3 style="color: #3182ce;">DQE RECOVER</h3>
-        <ul>
-        <li><span class="feature">Recherche DQE archives dans dqe.dqejson</span></li>
-        <li><span class="feature">Apercu HTML avec details</span></li>
-        <li><span class="new">Reconstruction couches et Excel</span></li>
-        </ul>
-        </div>
-        """
-        
-        QMessageBox.information(self, "Aide DQE Chargeur", help_text)
+        if os.path.exists(doc_path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(doc_path))
+        else:
+            QMessageBox.warning(self, "Documentation", 
+                f"Fichier documentation introuvable:\n{doc_path}")
     
     def _update_db_status(self):
         """Met à jour l'indicateur de connexion DB"""
