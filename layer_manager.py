@@ -28,6 +28,33 @@ except ImportError:
 
 
 class LayerManager:
+    _temp_tables_created = []
+
+    @classmethod
+    def cleanup_temp_tables(cls):
+        """Supprime toutes les tables temporaires creees pendant la session."""
+        if not cls._temp_tables_created:
+            return
+        try:
+            from .database_operations import DatabaseOperations
+            with DatabaseOperations.get_connection() as conn:
+                cursor = conn.cursor()
+                for table_name in cls._temp_tables_created:
+                    try:
+                        cursor.execute(
+                            sql.SQL("DROP TABLE IF EXISTS {}").format(
+                                sql.Identifier('temporaire', table_name)
+                            )
+                        )
+                        print(f"Table temporaire supprimee: temporaire.{table_name}")
+                    except Exception as e:
+                        print(f"Erreur suppression temporaire.{table_name}: {e}")
+                conn.commit()
+                cursor.close()
+            cls._temp_tables_created.clear()
+        except Exception as e:
+            print(f"Erreur nettoyage tables temporaires: {e}")
+
     @staticmethod
     def create_compatible_field(name: str, field_type, type_name: str = None):
         """
@@ -201,7 +228,6 @@ class LayerManager:
             else:
                 error = layer.error().message() if layer.error() else "Erreur inconnue"
                 print(f"        ÉCHEC: Couche invalide - {error}")
-                print(f"        URI complète: {uri.uri()}")
                 return None
                 
         except Exception as e:
@@ -451,29 +477,25 @@ class LayerManager:
                 """).format(sql.Identifier('temporaire', permanent_table_name)),
                 (sro, sro)
             )
-            cursor.execute(f"""
-                CREATE INDEX idx_{permanent_table_name}_posemode 
-                ON {qualified_table_name}(posemode, normalized_capa)
-            """)
-            
-            cursor.execute(f"""
-                CREATE INDEX idx_{permanent_table_name}_gid_dc2 
-                ON {qualified_table_name}(gid_dc2)
-            """)
-            
-            cursor.execute(f"ANALYZE {qualified_table_name}")
+            idx_posemode = sql.Identifier(f"idx_{permanent_table_name}_posemode")
+            idx_gid = sql.Identifier(f"idx_{permanent_table_name}_gid_dc2")
+            tbl = sql.Identifier('temporaire', permanent_table_name)
+            cursor.execute(sql.SQL("CREATE INDEX {} ON {} (posemode, normalized_capa)").format(idx_posemode, tbl))
+            cursor.execute(sql.SQL("CREATE INDEX {} ON {} (gid_dc2)").format(idx_gid, tbl))
+            cursor.execute(sql.SQL("ANALYZE {}").format(tbl))
             conn.commit()
             
+            LayerManager._temp_tables_created.append(permanent_table_name)
             print(f"Table permanente '{qualified_table_name}' créée avec succès!")
-            cursor.execute(f"""
+            cursor.execute(sql.SQL("""
                 SELECT 
                     posemode,
                     normalized_capa,
                     COUNT(*) as count
-                FROM {qualified_table_name}
+                FROM {}
                 GROUP BY posemode, normalized_capa
                 ORDER BY posemode, normalized_capa
-            """)
+            """).format(tbl))
             
             categories = cursor.fetchall()
             print(f"Trouvé {len(categories)} catégories de câbles découpés")
@@ -483,6 +505,12 @@ class LayerManager:
             if not uri:
                 print("Erreur: Impossible de récupérer l'URI de connexion")
                 return []
+            
+            # Sous-groupe pour organiser les câbles découpés
+            cables_group = None
+            if layer_group:
+                cables_group = layer_group.addGroup("Câbles découpés")
+            
             for idx, (posemode, capa, count) in enumerate(categories):
                 if count == 0:
                     continue
@@ -494,10 +522,12 @@ class LayerManager:
                     layer_name = f"Câble optique de {capa} FO en façade"
                 else:
                     layer_name = f"Câble de {capa} FO (mode pose {posemode})"
+                safe_posemode = int(posemode)
+                safe_capa = int(capa)
                 sql_query = f"""
                     SELECT * 
                     FROM {qualified_table_name}
-                    WHERE posemode = {posemode} AND normalized_capa = {capa}
+                    WHERE posemode = {safe_posemode} AND normalized_capa = {safe_capa}
                 """
                 uri_copy = QgsDataSourceUri(uri.uri())
                 uri_copy.setDataSource("", f"({sql_query})", "geom", "", "gid_dc2")
@@ -506,7 +536,9 @@ class LayerManager:
                 
                 if layer.isValid():
                     QgsProject.instance().addMapLayer(layer, False)
-                    if layer_group:
+                    if cables_group:
+                        cables_group.addLayer(layer)
+                    elif layer_group:
                         layer_group.addLayer(layer)
                     if layers_loaded is not None:
                         layers_loaded.append(layer)
@@ -534,3 +566,117 @@ class LayerManager:
             except:
                 pass
             return []
+
+    @staticmethod
+    def extract_layer_data(layer):
+        """Extrait les donnees d'une couche QGIS pour sauvegarde JSON.
+        Version robuste avec gestion des couches C++ supprimees.
+        """
+        empty_result = {'type': 'FeatureCollection', 'features': [], 'crs': None}
+        try:
+            if not layer or not layer.isValid():
+                return empty_result
+
+            _ = layer.name()
+            layer_fields = layer.fields()
+
+            features_data = []
+            for feature in layer.getFeatures():
+                try:
+                    feature_dict = {
+                        'geometry': feature.geometry().asWkt() if feature.geometry() else None,
+                        'attributes': {}
+                    }
+                    for field in layer_fields:
+                        field_name = field.name()
+                        try:
+                            value = feature[field_name]
+                            if isinstance(value, (int, float, str, bool)) or value is None:
+                                feature_dict['attributes'][field_name] = value
+                            else:
+                                feature_dict['attributes'][field_name] = str(value)
+                        except Exception:
+                            feature_dict['attributes'][field_name] = None
+                    features_data.append(feature_dict)
+                except Exception:
+                    continue
+
+            crs_authid = None
+            try:
+                if layer.crs() and layer.crs().isValid():
+                    crs_authid = layer.crs().authid()
+            except Exception:
+                pass
+
+            return {
+                'type': 'FeatureCollection',
+                'features': features_data,
+                'crs': crs_authid
+            }
+        except RuntimeError:
+            return empty_result
+        except Exception:
+            return empty_result
+
+    @staticmethod
+    def collapse_group_recursive(group):
+        """Reduit (collapse) recursivement un groupe et tous ses enfants dans le layer tree.
+        Permet d'avoir une vue compacte sans afficher les styles."""
+        if not group:
+            return
+        try:
+            group.setExpanded(False)
+            for child in group.children():
+                if hasattr(child, 'setExpanded'):
+                    child.setExpanded(False)
+                if hasattr(child, 'children') and child.children():
+                    LayerManager.collapse_group_recursive(child)
+        except Exception as e:
+            print(f"Erreur collapse groupe: {e}")
+
+    @staticmethod
+    def collect_group_layers(group):
+        """Recherche recursive de toutes les couches valides dans un groupe."""
+        layers = []
+        if not group:
+            return layers
+        for child in group.children():
+            if hasattr(child, 'layer'):
+                layer = child.layer()
+                if layer and layer.isValid():
+                    layers.append(layer)
+            elif hasattr(child, 'children'):
+                layers.extend(LayerManager.collect_group_layers(child))
+        return layers
+
+    @staticmethod
+    def save_layers_to_db(layer_group, sro, nom_dqe, projet_code, user_name, db_manager):
+        """Sauvegarde toutes les couches d'un groupe dans dqe.dqejson.
+        Retourne le nombre de couches archivees.
+        """
+        import json as _json
+        layers_count = 0
+        try:
+            all_layers = LayerManager.collect_group_layers(layer_group)
+            for layer in all_layers:
+                try:
+                    layer_data = LayerManager.extract_layer_data(layer)
+                    if layer_data['features']:
+                        with db_manager.get_cursor() as cursor:
+                            query = """
+                                INSERT INTO dqe.dqejson
+                                (sro, nom_dqe, projet, categorie, champs, user_name, version_projet)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """
+                            cursor.execute(query, (
+                                sro, nom_dqe, projet_code,
+                                layer.name(),
+                                _json.dumps(layer_data),
+                                user_name, None
+                            ))
+                        layers_count += 1
+                except Exception as e:
+                    print(f"Erreur archivage {layer.name()}: {str(e)}")
+        except Exception as e:
+            print(f"Erreur archivage couches: {str(e)}")
+        return layers_count

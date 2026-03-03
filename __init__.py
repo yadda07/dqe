@@ -8,12 +8,12 @@ avec support des fonctionnalités PRO, EXE et PGC.
 Architecture modulaire conçue pour la maintenabilité et l'extensibilité.
 
 Auteur: DEVTEAM NGE
-Version: 3.2.0
+Version: 3.5.1
 Compatibilité: QGIS 3.x
 """
 
 # Métadonnées du plugin
-__version__ = "3.2.0"
+__version__ = "3.5.1"
 __author__ = "DEVTEM NGE"
 __email__ = "yadda@ext.nge.fr"
 __license__ = "GPL v3"

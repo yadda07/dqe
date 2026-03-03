@@ -10,44 +10,32 @@ import time
 import uuid
 from typing import List, Dict, Any
 
-from PyQt5.QtCore import QThread, QTimer, pyqtSignal
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QPushButton, QApplication, QMessageBox
 )
-from qgis.PyQt.QtCore import QObject
+from .base_tab import BaseDQETab
 from qgis.core import QgsProject, Qgis
-from qgis import utils
+from qgis.utils import iface
 from .ui_components import SROComboBox, TronconComboBox, ProgressWidget
 from .layer_manager import LayerManager
 from .database_operations import DatabaseOperations
 from .excel_manager import ExcelManager
-from .dqe_pro_tab import DQEWorker  # Réutilisation du DQEWorker
-from .dqe_utils import QtCompatibility
-try:
-    iface = utils.iface
-    from . import dqe_chargeur_dialog
-    _db_manager = getattr(dqe_chargeur_dialog, '_db_manager', None)
-    _logger = getattr(dqe_chargeur_dialog, '_logger', None)
-    _validator = getattr(dqe_chargeur_dialog, '_validator', None)
-except (ImportError, AttributeError):
-    iface = None
-    _db_manager = None
-    _logger = None
-    _validator = None
+from .workers import DQEWorker
+from .dqe_utils import _db_manager, _logger, _validator, QtCompatibility
 
 
-class DQEPGCTab(QWidget):
+class DQEPGCTab(BaseDQETab):
     """Interface et logique pour l'onglet DQE PGC"""
+    TAB_LABEL = "PGC"
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.layers_loaded = []
-        self.layer_group = None
         self.last_dqe_results = None
         self.last_sro = None
         self.last_troncon = None
-        self.redevance_mode_gestionnaire = False  # False = mode direct, True = mode gestionnaire
+        self.redevance_mode_gestionnaire = False
         self.setup_ui()
     
     def setup_ui(self):
@@ -169,44 +157,8 @@ class DQEPGCTab(QWidget):
         self.execute_button.setEnabled(False)
         
         try:
-            self.progress_widget.start_operation("DQE PGC")
-            self.worker = DQEWorker("PGC", sro, None, troncon)
-            self.thread = QThread()
-            self.progress_timer = QTimer()
-            self.current_progress = 10
-            self.progress_increment = 1
-            
-            def update_smooth_progress():
-                if hasattr(self, 'worker') and self.worker.is_running:
-                    target_progress = getattr(self.worker, 'progress_value', 10)
-                    
-                    if self.current_progress < target_progress:
-                        self.current_progress = min(self.current_progress + self.progress_increment, target_progress)
-                    elif self.current_progress < 90:  # Progression continue même sans cible
-                        self.current_progress += 0.5
-                    
-                    status = "Traitement DQE PGC en cours..."
-                    if self.current_progress < 20:
-                        status = "Initialisation..."
-                    elif self.current_progress < 40:
-                        status = "Connexion à la base..."
-                    elif self.current_progress < 85:
-                        status = "Exécution de la requête..."
-                    else:
-                        status = "Finalisation..."
-                    
-                    self.progress_widget.update_progress(int(self.current_progress), status)
-                else:
-                    self.progress_timer.stop()
-            
-            self.progress_timer.timeout.connect(update_smooth_progress)
-            self.progress_timer.start(100)  # Mise à jour toutes les 100ms pour fluidité
-            self.worker.moveToThread(self.thread)
-            self.worker.finished.connect(self.on_dqe_pgc_finished)
-            self.progress_widget.progress_cancelled.connect(self.worker.cancel)
-            self.thread.started.connect(self.worker.run)
-            self.thread.finished.connect(self.thread.deleteLater)
-            self.thread.start()
+            worker = DQEWorker("PGC", sro, None, troncon)
+            self._setup_worker_thread(worker, self.on_dqe_pgc_finished)
             
         except Exception as e:
             error_msg = f"Erreur initialisation DQE PGC: {str(e)}"
@@ -236,6 +188,11 @@ class DQEPGCTab(QWidget):
                 group_name = f"DQE_PGC_{sro_safe}_{troncon_safe}_{current_date}"
                 self.layer_group = LayerManager.create_layer_group(group_name)
                 created_layers = self._load_organized_layers(results, sro, troncon_safe)
+                
+                if self._is_cancelled:
+                    self.progress_widget.complete_operation(False, "Opération annulée")
+                    return
+                
                 print(f"\n=== CHOIX MODE CALCUL REDEVANCE ===")
                 msgBox = QMessageBox(self)
                 msgBox.setWindowTitle("Mode de Calcul des Redevances")
@@ -320,6 +277,10 @@ class DQEPGCTab(QWidget):
                 self.smooth_progress_to(100, "Finalisation...")
                 QApplication.processEvents()
                 
+                # Collapse tous les groupes pour une vue compacte
+                if self.layer_group:
+                    LayerManager.collapse_group_recursive(self.layer_group)
+                
                 final_message = f"DQE PGC terminé: {len(created_layers)} couches créées"
                 self.progress_widget.complete_operation(True, final_message)
                 
@@ -339,192 +300,117 @@ class DQEPGCTab(QWidget):
             print(traceback.format_exc())
             self.progress_widget.complete_operation(False, error_msg)
         finally:
-            if hasattr(self, 'progress_timer'):
-                self.progress_timer.stop()
-                self.progress_timer.deleteLater()
+            self._cleanup_thread()
             self.execute_button.setEnabled(True)
-            if hasattr(self, 'thread'):
-                self.thread.quit()
-                self.thread.wait()
-    
-    def smooth_progress_to(self, target_value, status):
-        """Fait évoluer la progression en douceur vers une valeur cible"""
-        if hasattr(self, 'current_progress'):
-            steps = max(1, int((target_value - self.current_progress) / 2))
-            for i in range(steps):
-                if self.current_progress < target_value:
-                    self.current_progress = min(self.current_progress + self.progress_increment, target_value)
-                elif self.current_progress < 90:  # Progression continue même sans cible
-                    self.current_progress += 0.5
-                
-                status = "Traitement DQE PGC en cours..."
-                if self.current_progress < 20:
-                    status = "Initialisation..."
-                elif self.current_progress < 40:
-                    status = "Connexion à la base..."
-                elif self.current_progress < 85:
-                    status = "Exécution de la requête..."
-                else:
-                    status = "Finalisation..."
-                
-                self.progress_widget.update_progress(int(self.current_progress), status)
-                QApplication.processEvents()
-                time.sleep(0.05)  # Petite pause pour rendre la progression visible
-            self.current_progress = target_value
-            self.progress_widget.update_progress(int(self.current_progress), status)
     
     def validate_dqe_pgc(self):
-        """Valide et sauvegarde le DQE PGC dans la base de données"""
+        """Valide et sauvegarde le DQE PGC dans la base de données
+        Structure: 1 ligne dqe_result + couches avec geometries
+        """
         try:
             sro = self.sro_input.currentText().strip()
             if not sro:
-                print(" Veuillez sélectionner un SRO")
+                QMessageBox.warning(self, "Validation DQE", "Veuillez sélectionner un SRO")
+                return
+            
+            if not self.last_dqe_results:
+                QMessageBox.warning(self, "Validation DQE", 
+                    "Aucun résultat DQE trouvé.\nVeuillez d'abord exécuter le DQE PGC.")
                 return
             
             if not self.layer_group:
-                print(" Aucune couche DQE PGC chargée à valider")
+                QMessageBox.warning(self, "Validation DQE", "Aucune couche DQE PGC chargée à valider")
                 return
             
-            # Recherche recursive de toutes les couches du groupe
-            def collect_all_layers(group):
-                layers = []
-                for child in group.children():
-                    if hasattr(child, 'layer'):
-                        layer = child.layer()
-                        if layer and layer.isValid():
-                            layers.append(layer)
-                    elif hasattr(child, 'children'):
-                        layers.extend(collect_all_layers(child))
-                return layers
-            
-            active_layers = collect_all_layers(self.layer_group)
-            
-            if not active_layers:
-                print(" Aucune couche valide trouvée dans le groupe")
-                return
-            
-            print(f"Couches a archiver: {len(active_layers)}")
-                
             projet_code = "GC"  # Génie Civil PGC
-            user_name = _db_manager._config.user if _db_manager and _db_manager._config else "unknown"
+            user_name = _db_manager.config.user if _db_manager and _db_manager.config else "unknown"
+            troncon = self.troncon_combo.currentText().strip() if hasattr(self, 'troncon_combo') else ''
             
-            success_count = 0
-            total_layers = len(active_layers)
-            for layer in active_layers:
-                if not layer.isValid():
-                    continue
+            # Construire le tableau JSON - TOUTES les lignes dans l'ordre exact
+            dqe_data = []
+            for result in self.last_dqe_results:
+                if hasattr(result, 'designation'):
+                    designation = result.designation or ''
+                    quantite = getattr(result, 'quantite', 0)
+                    unite = getattr(result, 'unite', '') or ''
+                    ids = getattr(result, 'ids', '') or ''
+                else:
+                    designation = result.get('designation') or result.get('Désignation') or ''
+                    quantite = result.get('quantite') or result.get('Quantité') or 0
+                    unite = result.get('unite') or result.get('Unité') or ''
+                    ids = result.get('ids') or result.get('Ids') or ''
                 
                 try:
-                    layer_data = self._extract_layer_data(layer)
-                    if layer_data['features']:
-                        with _db_manager.get_cursor() as cursor:
-                            query = """
-                                INSERT INTO dqe.dqejson 
-                                (sro, nom_dqe, projet, categorie, champs, user_name, version_projet) 
-                                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """
-                            cursor.execute(query, (
-                                sro,
-                                f"DQE_PGC_{sro}",
-                                projet_code,
-                                layer.name(),
-                                json.dumps(layer_data),
-                                user_name,
-                                None  # Version auto-assignée par trigger
-                            ))
-                        success_count += 1
-                        print(f"  Couche archivee: {layer.name()} ({len(layer_data['features'])} features)")
-                        
-                except Exception as e:
-                    print(f"  Erreur archivage {layer.name()}: {str(e)}")
-            # Sauvegarder dqe_result avec tous les résultats SQL
-            dqe_result_count = 0
-            if hasattr(self, 'last_dqe_results') and self.last_dqe_results:
-                dqe_data = []
-                for result in self.last_dqe_results:
-                    # Support dict et object
-                    if hasattr(result, 'designation'):
-                        designation = result.designation or ''
-                        quantite = getattr(result, 'quantite', 0)
-                        unite = getattr(result, 'unite', '') or ''
-                        ids = getattr(result, 'ids', '') or ''
-                    else:
-                        designation = result.get('designation') or result.get('Désignation') or ''
-                        quantite = result.get('quantite') or result.get('Quantité') or 0
-                        unite = result.get('unite') or result.get('Unité') or ''
-                        ids = result.get('ids') or result.get('Ids') or ''
-                    
-                    try:
-                        quantite_num = float(quantite) if quantite is not None else 0
-                    except (ValueError, TypeError):
-                        quantite_num = 0
-                    
-                    dqe_data.append({
-                        'designation': designation,
-                        'quantite': quantite_num,
-                        'unite': unite,
-                        'ids': str(ids) if ids else None
-                    })
+                    quantite_num = float(quantite) if quantite is not None else 0
+                except (ValueError, TypeError):
+                    quantite_num = 0
                 
-                if dqe_data:
-                    troncon = self.troncon_combo.currentText().strip() if hasattr(self, 'troncon_combo') else ''
-                    with _db_manager.get_cursor() as cursor:
-                        query = """
-                            INSERT INTO dqe.dqejson 
-                            (sro, nom_dqe, projet, categorie, champs, user_name, version_projet) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """
-                        cursor.execute(query, (
-                            sro,
-                            f"DQE_PGC_{sro}_{troncon}".replace('/', '_'),
-                            projet_code,
-                            'dqe_result',
-                            json.dumps(dqe_data),
-                            user_name,
-                            None  # Version auto-assignée par trigger
-                        ))
-                    dqe_result_count = len(dqe_data)
-                    print(f"dqe_result sauvegardé: {dqe_result_count} lignes")
+                dqe_data.append({
+                    'designation': designation,
+                    'quantite': quantite_num,
+                    'unite': unite,
+                    'ids': str(ids) if ids else None
+                })
             
-            print(f"Validation terminée avec succès !\n\n"
-                  f"- SRO: {sro}\n"
-                  f"- Type: {projet_code}\n"
-                  f"- Couches sauvegardées: {success_count}/{total_layers}\n"
-                  f"- Résultats DQE: {dqe_result_count} lignes")
+            if not dqe_data:
+                QMessageBox.warning(self, "Validation DQE", "Aucune donnée DQE à enregistrer")
+                return
+            
+            print(f"Validation DQE PGC: {len(dqe_data)} lignes à enregistrer")
+            
+            # Sauvegarde dqe_result
+            with _db_manager.get_cursor() as cursor:
+                query = """
+                    INSERT INTO dqe.dqejson 
+                    (sro, nom_dqe, projet, categorie, champs, user_name, version_projet) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (
+                    sro,
+                    f"DQE_PGC_{sro}_{troncon}".replace('/', '_'),
+                    projet_code,
+                    'dqe_result',
+                    json.dumps(dqe_data),
+                    user_name,
+                    None  # Version auto-assignée par trigger
+                ))
+            
+            print(f"Validation: 1 ligne dqe_result avec {len(dqe_data)} elements")
+            
+            # Sauvegarde de TOUTES les couches avec géométries
+            layers_count = 0
+            if self.layer_group:
+                layers_count = LayerManager.save_layers_to_db(
+                    self.layer_group, sro, f"DQE_PGC_{sro}",
+                    projet_code, user_name, _db_manager
+                )
+            
+            total_saved = len(dqe_data) + layers_count
+            print(f"Validation terminee: {len(dqe_data)} resultats SQL + {layers_count} couches")
+            
+            QMessageBox.information(
+                self, 
+                "Validation DQE PGC", 
+                f"Validation terminee!\n\n"
+                f"- SRO: {sro}\n"
+                f"- Troncon: {troncon}\n"
+                f"- Type: {projet_code}\n"
+                f"- Resultats DQE: {len(dqe_data)}\n"
+                f"- Couches archivees: {layers_count}\n"
+                f"- Total: {total_saved} elements"
+            )
             
             if _logger:
-                _logger.info(f"DQE PGC validé - SRO: {sro}, Type: {projet_code}, Couches: {success_count}, DQE: {dqe_result_count}")
+                _logger.info(f"DQE PGC validé - SRO: {sro}, Type: {projet_code}, Couches: {layers_count}, DQE: {len(dqe_data)}")
                 
         except Exception as e:
-            error_msg = f"Erreur lors de la validation DQE PGC: {str(e)}"
+            error_msg = f"Erreur validation DQE PGC: {str(e)}"
             print(f"{error_msg}")
+            import traceback
+            print(traceback.format_exc())
             if _logger:
                 _logger.error(error_msg, exception=e)
-    
-    def _extract_layer_data(self, layer):
-        """Extrait les données d'une couche QGIS pour sauvegarde JSON"""
-        features_data = []
-        
-        for feature in layer.getFeatures():
-            feature_dict = {
-                'geometry': feature.geometry().asWkt() if feature.geometry() else None,
-                'attributes': {}
-            }
-            for field in layer.fields():
-                field_name = field.name()
-                value = feature[field_name]
-                if isinstance(value, (int, float, str, bool)) or value is None:
-                    feature_dict['attributes'][field_name] = value
-                else:
-                    feature_dict['attributes'][field_name] = str(value)
-            
-            features_data.append(feature_dict)
-        
-        return {
-            'type': 'FeatureCollection',
-            'features': features_data,
-            'crs': layer.crs().authid() if layer.crs() and layer.crs().isValid() else None
-        }
+            QMessageBox.critical(self, "Erreur", f"Erreur validation DQE PGC: {str(e)}")
     
     def regenerate_excel(self):
         """Régénère le fichier Excel avec les données de redevance selon le mode sélectionné"""
@@ -931,6 +817,9 @@ class DQEPGCTab(QWidget):
             category_group = LayerManager.create_layer_subgroup(self.layer_group, category_name)
             
             for task in tasks:
+                if self._is_cancelled:
+                    print("Annulation detectee pendant le chargement des couches")
+                    return created_layers
                 layer_name = f"{task['designation']}"
                 if troncon_safe:
                     layer_name += f" - {troncon_safe}"

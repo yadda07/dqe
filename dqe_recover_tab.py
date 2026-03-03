@@ -22,14 +22,7 @@ from qgis.utils import iface
 
 from .layer_manager import LayerManager
 from .excel_manager import ExcelManager
-
-try:
-    from . import dqe_chargeur_dialog
-    _db_manager = getattr(dqe_chargeur_dialog, '_db_manager', None)
-    _logger = getattr(dqe_chargeur_dialog, '_logger', None)
-except (ImportError, AttributeError):
-    _db_manager = None
-    _logger = None
+from .dqe_utils import _db_manager, _logger
 
 
 class PreviewWorker(QThread):

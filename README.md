@@ -3,7 +3,7 @@
 Génère les DQE (Détail Quantitatif Estimatif) pour Auvergne Numérique.  
 Fait le boulot : requêtes SQL, couches QGIS, exports Excel.
 
-**v3.4.0** | QGIS 3.28+ | NGE
+**v3.5.0** | QGIS 3.28+ | NGE
 
 ## Structure
 
@@ -134,6 +134,35 @@ Gestion auto selon type infra :
 4. Noms couches uniques auto
 5. Prend toujours la couche la plus recente
 
+## Changelog
+
+### 3.5.0
+- Correction SyntaxError EOL (guillemets dans f-strings) empêchant le chargement
+- Sauvegarde complète des données DQE PRO dans dqejson (SQL + câbles découpés)
+- Correspondance exacte par désignation pour template PGC
+- Gestion dynamique des alvéoles dans template PGC
+- Unification du remplissage template via ExcelManager
+- Correction "wrapped C/C++ object deleted" sur onglets PRO et EXE
+- Correction régénération Excel après modification gestionnaire
+- Correction fallback template EXE vers PRO
+- Documentation HTML : toggle dark/light mode, schéma architecture
+- Nettoyage global : style professionnel, suppression émojis
+
+### 3.4.0
+- Onglet DQE Recover (archives dqe.dqejson)
+- Modes blocage_ran : Standard (TE/DE), Travaux (TT/DT), Blocage (TB/DB)
+- Compatibilité Qt (classe QtCompatibility)
+- Sauvegarde Excel robuste (openpyxl deprecated)
+- Correction comptage chambres L3C/L3T
+
+### 3.2.0
+- Infrastructures mixtes (aérien + souterrain)
+- Redevances poteaux RAUV / alvéoles séparées
+- Corrections gc_exe.gestionnaire() et redevance_table()
+
+### 3.0.0
+- Version initiale PRO, EXE, PGC
+
 ## Docs
 
 Dans `docs/` :
@@ -153,4 +182,4 @@ Dans `docs/` :
 ---
 
 NGE - Auvergne Numerique  
-v3.4.0 | yadda@ext.nge.fr
+v3.5.0 | yadda@ext.nge.fr

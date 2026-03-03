@@ -5,7 +5,7 @@ qgisMaximumVersion=3.45.0
 description=Plugin de génération de DQE (Détail Quantitatif Estimatif) pour le projet de Auvergne Numérique
 long_description=Ce plugin permet la génération automatique de DQE pour le projet de Auvergne Numérique à partir d'un code SRO. Il supporte trois modes : DQE PRO (quantitatifs projet), DQE EXE (quantitatifs exécution avec génie civil), et DQE PGC (attribution gestionnaire avec corrections manuelles). Génération automatique d'Excel avec templates spécialisés et chargement des couches QGIS organisées.
 
-version=3.4.0
+version=3.5.1
 author=DEVTEM NGE
 email=yadda@nge-es.com
 
@@ -20,7 +20,26 @@ repository=
 experimental=False
 deprecated=False
 
-changelog=3.4.0 - DQE Recover + Modes Travaux RAN + Améliorations majeures
+changelog=3.5.1 - Audit securite et qualite code
+    * Neutralisation credentials config.json + .gitignore
+    * Correction injections SQL (psycopg2.sql.Identifier/Literal)
+    * Suppression password expose dans les logs
+    * Suppression methodes dupliquees ExcelManager
+    * Properties publiques DatabaseManager (is_connected, config)
+    * Migration pool DB pour fonctions redevance
+    * Documentation HTML refondue avec schemas SVG interactifs
+    3.5.0 - Stabilisation, corrections critiques et améliorations templates
+    • Correction SyntaxError EOL (guillemets dans f-strings) empêchant le chargement du plugin
+    • Sauvegarde complète des données DQE PRO dans dqejson (résultats SQL + câbles découpés)
+    • Correspondance exacte par désignation pour le remplissage template DQE PGC
+    • Gestion dynamique des alvéoles dans le template PGC (section dédiée)
+    • Refactoring : unification du remplissage template via ExcelManager (suppression duplication)
+    • Correction erreur "wrapped C/C++ object deleted" sur onglets PRO et EXE
+    • Correction régénération Excel après modification gestionnaire (couches invalides)
+    • Correction fallback template EXE vers PRO
+    • Amélioration documentation HTML (toggle dark/light mode, schéma architecture)
+    • Nettoyage global : suppression émojis et commentaires exagérés, style professionnel
+    3.4.0 - DQE Recover + Modes Travaux RAN + Améliorations majeures
     • Onglet DQE Recover : récupération archives depuis dqe.dqejson
     • Aperçu HTML des DQE archivés avec watermark
     • Modes calcul blocage_ran : Standard (TE/DE), Travaux (TT/DT), Blocage (TB/DB)

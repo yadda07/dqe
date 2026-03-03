@@ -139,7 +139,7 @@ class SROComboBox(QComboBox):
     def load_sro_list(self):
         """Charge la liste des SRO avec autocomplétion"""
         try:
-            if _db_manager and _db_manager._connection_pool:
+            if _db_manager and _db_manager.is_connected:
                 query = "SELECT sro FROM rip_avg_nge.za_sro"
                 
                 print(f"Chargement SRO avec requête: {query}")

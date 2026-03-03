@@ -18,7 +18,7 @@ import psycopg2
 from psycopg2.extras import DictCursor
 from psycopg2.pool import SimpleConnectionPool
 
-from qgis.core import QgsSettings, QgsDataSourceUri, QgsMessageLog, Qgis
+from qgis.core import QgsSettings, QgsDataSourceUri, QgsMessageLog, Qgis, QgsApplication, QgsAuthMethodConfig
 from qgis.utils import iface
 
 
@@ -123,8 +123,10 @@ class DatabaseManager:
         """Initialise avec pool réduit"""
         self._config = config
         try:
+            conn_params = config.to_dict()
+            conn_params['connect_timeout'] = 10
             self._connection_pool = SimpleConnectionPool(
-                1, pool_size, **config.to_dict()
+                1, pool_size, **conn_params
             )
             self.logger.info(f"Pool DB initialisé ({pool_size} connexions)")
         except Exception as e:
@@ -184,6 +186,16 @@ class DatabaseManager:
         )
         return uri
 
+    @property
+    def is_connected(self) -> bool:
+        """Indique si le pool de connexions est actif"""
+        return self._connection_pool is not None
+
+    @property
+    def config(self):
+        """Retourne la configuration DB courante"""
+        return self._config
+
 
 class ConfigurationManager:
     """Gestionnaire config SIMPLIFIÉ"""
@@ -191,128 +203,170 @@ class ConfigurationManager:
     def __init__(self):
         self.logger = SimpleLogger()
     
+    # Criteres de recherche pour la connexion cible
+    TARGET_HOST = "10.241.228.107"
+    TARGET_DATABASE = "AUVERGNE"
+    TARGET_CONNECTION_NAME = "AUVERGNE"
+    
     def get_db_config(self) -> DatabaseConfig:
-        """Récupère config DB - VERSION FLEXIBLE"""
+        """Recupere config DB avec recherche ciblee AUVERGNE"""
         
-        self.logger.info("=== DÉBUT RECHERCHE CONFIGURATION DB ===")
-        self.logger.info("Étape 1: Recherche connexions QGIS PostgreSQL")
+        self.logger.info("=== DEBUT RECHERCHE CONFIGURATION DB ===")
+        
+        # Etape 1: Chercher connexion QGIS avec DB=AUVERGNE + host cible
+        self.logger.info("Etape 1: Recherche connexion QGIS (DB=AUVERGNE, host=10.241.228.107)")
         try:
-            config = self._get_any_qgis_connection()
+            config = self._find_target_qgis_connection()
             if config:
-                self.logger.info("✅ Config depuis connexion QGIS existante")
+                self.logger.info("Config trouvee depuis connexion QGIS ciblee")
                 return config
-            else:
-                self.logger.info("❌ Aucune connexion QGIS valide")
         except Exception as e:
-            self.logger.warning(f"❌ Échec config QGIS: {e}")
-        self.logger.info("Étape 2: Recherche fichier JSON")
+            self.logger.warning(f"Echec recherche QGIS ciblee: {e}")
+        
+        # Etape 2: Fichier JSON local
+        self.logger.info("Etape 2: Recherche fichier JSON")
         try:
             config = self._get_json_config()
             if config:
-                self.logger.info("✅ Config depuis JSON")
+                self.logger.info("Config depuis JSON")
                 return config
-            else:
-                self.logger.info("❌ Aucune config JSON valide")
         except Exception as e:
-            self.logger.warning(f"❌ Échec config JSON: {e}")
-        self.logger.info("Étape 3: Recherche variables ENV")
+            self.logger.warning(f"Echec config JSON: {e}")
+        
+        # Etape 3: Variables d'environnement
+        self.logger.info("Etape 3: Recherche variables ENV")
         try:
             config = self._get_env_config()
             if config:
-                self.logger.info("✅ Config depuis ENV")
+                self.logger.info("Config depuis ENV")
                 return config
-            else:
-                self.logger.info("❌ Aucune config ENV valide")
         except Exception as e:
-            self.logger.warning(f"❌ Échec config ENV: {e}")
-        self.logger.info("Étape 4: Affichage interface utilisateur")
+            self.logger.warning(f"Echec config ENV: {e}")
+        
+        # Etape 4: Dialog de connexion manuelle
+        self.logger.info("Etape 4: Affichage interface utilisateur")
         try:
             config = self._get_user_connection()
             if config:
-                self.logger.info("✅ Config depuis interface utilisateur")
+                self.logger.info("Config depuis interface utilisateur")
                 return config
-            else:
-                self.logger.info("❌ Interface utilisateur annulée")
         except Exception as e:
-            self.logger.warning(f"❌ Échec config utilisateur: {e}")
+            self.logger.error(f"Erreur lors de l'affichage de l'interface de connexion: {e}")
         
-        self.logger.error("=== AUCUNE CONFIGURATION TROUVÉE ===")
-        raise RuntimeError("Aucune config DB trouvée")
+        self.logger.error("=== AUCUNE CONFIGURATION TROUVEE ===")
+        raise RuntimeError("Aucune config DB trouvee")
     
-    def _get_any_qgis_connection(self) -> Optional[DatabaseConfig]:
-        """Config depuis toutes les connexions QGIS - teste réellement les connexions"""
+    def _read_qgis_connection(self, conn_name: str) -> Optional[dict]:
+        """Lit les parametres d'une connexion QGIS PostgreSQL par son nom.
+        Gere le stockage direct (username/password) et le systeme authcfg."""
         try:
             settings = QgsSettings()
-            settings.beginGroup("PostgreSQL/connections")
-            connections = settings.childGroups()
-            settings.endGroup()
-            
-            self.logger.info(f"Connexions QGIS trouvées: {connections}")
-            
-            for conn in connections:
-                self.logger.info(f"Test de connexion QGIS: {conn}")
-                settings.beginGroup(f"PostgreSQL/connections/{conn}")
-                config_data = {
-                    'host': settings.value("host", ""),
-                    'port': settings.value("port", ""),
-                    'database': settings.value("database", ""),
-                    'user': settings.value("username", ""),
-                    'password': settings.value("password", "")
-                }
-                settings.endGroup()
-                if not all(config_data.values()):
-                    self.logger.warning(f"Connexion {conn} incomplète: {config_data}")
-                    continue
-                try:
-                    test_config = DatabaseConfig(**config_data)
-                    import psycopg2
-                    conn_test = psycopg2.connect(**test_config.to_dict())
-                    conn_test.close()
-                    self.logger.info(f"Connexion {conn} valide!")
-                    return test_config
-                except Exception as e:
-                    self.logger.warning(f"Connexion {conn} échec: {e}")
-                    continue
-            
-            self.logger.info("Aucune connexion QGIS valide trouvée")
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Erreur lors de la vérification des connexions QGIS: {e}")
-            return None
-    
-    def _get_qgis_connection(self) -> Optional[DatabaseConfig]:
-        """Config depuis QGIS"""
-        try:
-            settings = QgsSettings()
-            settings.beginGroup("PostgreSQL/connections")
-            connections = settings.childGroups()
-            settings.endGroup()
-            
-            auvergne_conn = None
-            for conn in connections:
-                if conn.upper() == "AUVERGNE":
-                    auvergne_conn = conn
-                    break
-            
-            if not auvergne_conn:
-                return None
-            
-            settings.beginGroup(f"PostgreSQL/connections/{auvergne_conn}")
+            settings.beginGroup(f"PostgreSQL/connections/{conn_name}")
             config_data = {
                 'host': settings.value("host", ""),
-                'port': settings.value("port", ""),
+                'port': settings.value("port", "5432"),
                 'database': settings.value("database", ""),
                 'user': settings.value("username", ""),
                 'password': settings.value("password", "")
             }
+            authcfg = settings.value("authcfg", "")
             settings.endGroup()
             
-            if all(config_data.values()):
-                return DatabaseConfig(**config_data)
+            has_user = bool(config_data['user'])
+            has_pass = bool(config_data['password'])
+            has_auth = bool(authcfg)
+            self.logger.info(
+                f"Connexion '{conn_name}': host={config_data['host']}, "
+                f"db={config_data['database']}, "
+                f"user={'oui' if has_user else 'non'}, "
+                f"pass={'oui' if has_pass else 'non'}, "
+                f"authcfg={'oui' if has_auth else 'non'}"
+            )
+            
+            # Si credentials manquants et authcfg present, decoder via auth manager
+            if authcfg and (not has_user or not has_pass):
+                try:
+                    auth_mgr = QgsApplication.authManager()
+                    auth_cfg_obj = QgsAuthMethodConfig()
+                    if auth_mgr.loadAuthenticationConfig(authcfg, auth_cfg_obj, True):
+                        config_map = auth_cfg_obj.configMap()
+                        if not config_data['user']:
+                            config_data['user'] = config_map.get('username', '')
+                        if not config_data['password']:
+                            config_data['password'] = config_map.get('password', '')
+                        self.logger.info(f"Credentials recuperes via authcfg pour '{conn_name}'")
+                    else:
+                        self.logger.warning(f"Echec chargement authcfg '{authcfg}' pour '{conn_name}'")
+                except Exception as e:
+                    self.logger.warning(f"Erreur lecture authcfg pour '{conn_name}': {e}")
+            
+            return config_data
+        except Exception as e:
+            self.logger.warning(f"Erreur lecture connexion '{conn_name}': {e}")
+            return None
+    
+    def _test_connection(self, config_data: dict) -> Optional[DatabaseConfig]:
+        """Teste une connexion et retourne un DatabaseConfig si valide."""
+        if not config_data:
+            self.logger.warning("Test connexion: config_data vide")
+            return None
+        missing = [k for k in ('host', 'database', 'user', 'password') if not config_data.get(k)]
+        if missing:
+            self.logger.warning(f"Test connexion: champs manquants: {missing}")
+            return None
+        try:
+            test_config = DatabaseConfig(**config_data)
+            conn_params = test_config.to_dict()
+            conn_params['connect_timeout'] = 5
+            conn_test = psycopg2.connect(**conn_params)
+            conn_test.close()
+            return test_config
+        except Exception as e:
+            self.logger.warning(f"Test connexion echec ({config_data.get('host')}/{config_data.get('database')}): {e}")
+            return None
+    
+    def _find_target_qgis_connection(self) -> Optional[DatabaseConfig]:
+        """Recherche ciblee: DB=AUVERGNE + host cible, puis nom connexion AUVERGNE + host cible."""
+        try:
+            settings = QgsSettings()
+            settings.beginGroup("PostgreSQL/connections")
+            connections = settings.childGroups()
+            settings.endGroup()
+            
+            self.logger.info(f"Connexions QGIS disponibles: {connections}")
+            
+            # Passe 1: Chercher par DB=AUVERGNE ET host=10.241.228.107
+            for conn_name in connections:
+                config_data = self._read_qgis_connection(conn_name)
+                if not config_data:
+                    continue
+                db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE
+                host_match = config_data.get('host', '') == self.TARGET_HOST
+                if db_match and host_match:
+                    self.logger.info(f"Connexion ciblee trouvee: '{conn_name}' (DB={self.TARGET_DATABASE}, host={self.TARGET_HOST})")
+                    result = self._test_connection(config_data)
+                    if result:
+                        return result
+            
+            # Passe 2: Chercher par nom AUVERGNE (insensible casse) ET host cible
+            for conn_name in connections:
+                if conn_name.upper() != self.TARGET_CONNECTION_NAME:
+                    continue
+                config_data = self._read_qgis_connection(conn_name)
+                if not config_data:
+                    continue
+                host_match = config_data.get('host', '') == self.TARGET_HOST
+                if host_match:
+                    self.logger.info(f"Connexion AUVERGNE trouvee: '{conn_name}' (host={self.TARGET_HOST})")
+                    result = self._test_connection(config_data)
+                    if result:
+                        return result
+            
+            self.logger.info("Aucune connexion QGIS ciblee trouvee")
             return None
             
-        except Exception:
+        except Exception as e:
+            self.logger.error(f"Erreur recherche connexions QGIS: {e}")
             return None
     
     def _get_json_config(self) -> Optional[DatabaseConfig]:
@@ -369,9 +423,16 @@ class ConfigurationManager:
 class ValidationUtils:
     """Validateur ROBUSTE"""
     
-    def __init__(self):
+    def __init__(self, db_manager=None):
         self.logger = SimpleLogger()
-        self.db_manager = DatabaseManager()
+        self._db_manager_ref = db_manager
+    
+    @property
+    def db_manager(self):
+        """Retourne le db_manager injecte ou le singleton global"""
+        if self._db_manager_ref is not None:
+            return self._db_manager_ref
+        return _db_manager
     
     def validate_sro_exists(self, sro: str) -> Tuple[bool, str]:
         """Valide SRO de manière robuste"""
@@ -379,7 +440,7 @@ class ValidationUtils:
             return False, "SRO vide"
         
         sro = sro.strip()
-        if not self.db_manager._connection_pool:
+        if not self.db_manager or not self.db_manager._connection_pool:
             if self._validate_sro_format(sro):
                 return True, "SRO accepté (format valide - base non connectée)"
             else:
@@ -443,11 +504,18 @@ class FileUtils:
         """Formate un nom de fichier en sécurisant les caractères"""
         return filename.replace('/', '_').replace('\\', '_').replace(' ', '_')
     
+    TEMPLATE_FILES = {
+        'PRO': 'template_dqe_pro.xlsx',
+        'EXE': 'template_dqe_exe.xlsx',
+        'PGC': 'template_dqe_pgc.xlsx'
+    }
+    
     @staticmethod
-    def get_template_path() -> str:
-        """Retourne le chemin du template Excel"""
-        template_path = os.path.join(os.path.dirname(__file__), 'files', 'template.xlsx')
-        return template_path
+    def get_template_path(operation_type: str = 'PRO') -> str:
+        """Retourne le chemin du template Excel selon le type d'operation (PRO, EXE, PGC)"""
+        base_type = operation_type.upper().split('_')[0]
+        template_name = FileUtils.TEMPLATE_FILES.get(base_type, 'template_dqe_pro.xlsx')
+        return os.path.join(os.path.dirname(__file__), 'files', template_name)
 
 
 def initialize_dqe_system(pool_size: int = 3) -> bool:
@@ -473,9 +541,16 @@ def cleanup_dqe_system():
     """Nettoie système DQE"""
     logger = SimpleLogger()
     try:
+        global _db_manager
+        if _db_manager and _db_manager._connection_pool:
+            _db_manager._connection_pool.closeall()
+            _db_manager._connection_pool = None
+            logger.info("Pool de connexions DB fermé")
         logger.info("Système DQE nettoyé")
     except Exception as e:
         logger.error("Erreur nettoyage", exception=e)
+
+
 def retry_on_db_error(max_retries: int = 2):
     """Retry simple pour DB"""
     def decorator(func):

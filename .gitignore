@@ -20,7 +20,14 @@ Thumbs.db
 *.log
 ~$*
 
+# Credentials / Configuration locale
+config.json
+db_config.json
+
 # Build
 *.egg-info/
 dist/
 build/
+
+# Old code
+DQE Chargeurold/

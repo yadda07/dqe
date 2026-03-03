@@ -249,6 +249,12 @@ class DqeChargeurPlugin:
                         _logger.warning(f"Erreur suppression menu: {e}")
             if MODULES_LOADED:
                 try:
+                    from .layer_manager import LayerManager
+                    LayerManager.cleanup_temp_tables()
+                except Exception as e:
+                    if _logger:
+                        _logger.warning(f"Erreur nettoyage tables temporaires: {e}")
+                try:
                     cleanup_dqe_system()
                 except Exception as e:
                     if _logger:
@@ -295,7 +301,7 @@ class DqeChargeurPlugin:
         """Retourne les infos du plugin"""
         return {
             'name': 'DQE Chargeur',
-            'version': '3.1.1',
+            'version': '3.5.1',
             'initialized': self.initialized,
             'modules_loaded': MODULES_LOADED,
             'action_enabled': self.action.isEnabled() if self.action else False,
