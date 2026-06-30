@@ -10,12 +10,13 @@ import tempfile
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QPushButton, QComboBox, QMessageBox, QApplication, QTableWidget,
-    QTableWidgetItem, QHeaderView, QLabel, QFrame, QLineEdit, QProgressBar,
-    QTextBrowser, QSplitter
+from .compat import (
+    Qt, QThread, pyqtSignal, QWidget, QVBoxLayout, QHBoxLayout,
+    QFormLayout, QGroupBox, QPushButton, QComboBox, QMessageBox,
+    QApplication, QTableWidget, QTableWidgetItem, QHeaderView,
+    QLabel, QFrame, QLineEdit, QProgressBar, QTextBrowser, QSplitter,
+    HEADERVIEW_STRETCH, TABLE_SELECT_ROWS, TABLE_SINGLE_SELECTION,
+    QT_VERTICAL, QT_WAIT_CURSOR, MSGBOX_YES, MSGBOX_NO
 )
 from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, Qgis
 from qgis.utils import iface
@@ -135,15 +136,15 @@ class DQERecoverTab(QWidget):
         self.dqe_table.setHorizontalHeaderLabels([
             "SRO", "Type", "Nom DQE", "Version", "Date création", "Utilisateur"
         ])
-        self.dqe_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.dqe_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.dqe_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.dqe_table.horizontalHeader().setSectionResizeMode(HEADERVIEW_STRETCH)
+        self.dqe_table.setSelectionBehavior(TABLE_SELECT_ROWS)
+        self.dqe_table.setSelectionMode(TABLE_SINGLE_SELECTION)
         self.dqe_table.itemSelectionChanged.connect(self.on_dqe_selected)
         self.dqe_table.setMinimumHeight(200)
         select_layout.addWidget(self.dqe_table)
         
         # Splitter vertical pour redimensionner table/aperçu
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(QT_VERTICAL)
         splitter.addWidget(select_group)
         
         # Groupe aperçu
@@ -571,7 +572,7 @@ class DQERecoverTab(QWidget):
             return
         
         try:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
+            QApplication.setOverrideCursor(QT_WAIT_CURSOR)
             
             dqe_data = self.get_dqe_data()
             if not dqe_data:
@@ -719,7 +720,7 @@ class DQERecoverTab(QWidget):
             return
         
         try:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
+            QApplication.setOverrideCursor(QT_WAIT_CURSOR)
             
             sro = self.selected_dqe['sro']
             projet = self.selected_dqe['projet']
@@ -868,18 +869,14 @@ class DQERecoverTab(QWidget):
             
             provider = layer.dataProvider()
             
-            # Ajouter les attributs depuis la première feature
-            from qgis.core import QgsField
-            from PyQt5.QtCore import QVariant
-            
+            # Ajouter les attributs depuis la premiere feature (helper version-aware)
             first_attrs = features[0].get('attributes', {})
             fields = []
             for attr_name, attr_value in first_attrs.items():
                 if isinstance(attr_value, (int, float)):
-                    fields.append(QgsField(attr_name, QVariant.Double))
+                    fields.append(LayerManager.create_compatible_field(attr_name, "double"))
                 else:
-                    fields.append(QgsField(attr_name, QVariant.String))
-            
+                    fields.append(LayerManager.create_compatible_field(attr_name, "string"))
             provider.addAttributes(fields)
             layer.updateFields()
             
@@ -930,10 +927,10 @@ class DQERecoverTab(QWidget):
             f"- Un fichier Excel\n"
             f"- Les couches QGIS\n\n"
             f"Continuer?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes
+            MSGBOX_YES | MSGBOX_NO,
+            MSGBOX_YES
         )
         
-        if reply == QMessageBox.Yes:
+        if reply == MSGBOX_YES:
             self.recover_excel()
             self.recover_layers()

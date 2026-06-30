@@ -10,13 +10,11 @@ import json
 import time
 import uuid
 
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QPushButton, QComboBox, QMessageBox, QApplication
+from .compat import (
+    QTimer, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QPushButton, QComboBox, QMessageBox, QApplication, QGIS_SUCCESS
 )
 from .base_tab import BaseDQETab
-from qgis.core import Qgis
 from qgis.utils import iface
 from .ui_components import SROComboBox, ProgressWidget
 from .layer_manager import LayerManager
@@ -24,7 +22,10 @@ from .database_operations import DatabaseOperations
 from .excel_manager import ExcelManager
 from .dqe_utils import _db_manager, _logger, _validator
 from .designation_classifier import DesignationClassifier
-from .workers import DQEWorker
+from .workers import DQEWorker, DistCablesWorker
+from .compat import QThread
+from .dqe_utils import _crash_log
+from .telemetry import send_telemetry
 
 
 class DQEProTab(BaseDQETab):
@@ -141,17 +142,22 @@ class DQEProTab(BaseDQETab):
             QTimer.singleShot(1000, lambda: self.validate_sro_async(sro))
     
     def validate_sro_async(self, sro: str):
-        """Verifie que le SRO existe en base avant d'activer le bouton"""
+        """Validation format uniquement sur frappe (pas de DB).
+
+        La validation d'existence en base est différée au clic sur
+        execute_dqe_pro pour éviter tout appel DB sur le main thread
+        pendant la saisie.
+        """
         if sro != self.sro_input.lineEdit().text().strip():
             return
         if _validator:
-            is_valid, message = _validator.validate_sro_exists(sro)
-            if is_valid:
+            if _validator._validate_sro_format(sro):
                 self.execute_button.setEnabled(True)
     
     def execute_dqe_pro(self):
         sro = self.sro_input.lineEdit().text().strip()
         p_type = self.type_combo.currentData()
+        _crash_log.step("execute_dqe_pro START", f"sro={sro} type={p_type}")
         
         if not sro:
             QMessageBox.warning(self, "Erreur", "Veuillez saisir un SRO")
@@ -164,9 +170,11 @@ class DQEProTab(BaseDQETab):
                 return
         
         self.execute_button.setEnabled(False)
+        self._exec_start = time.monotonic()
         
         try:
             worker = DQEWorker("PRO", sro, p_type)
+            _crash_log.step("execute_dqe_pro", "calling _setup_worker_thread")
             self._setup_worker_thread(worker, self.on_dqe_pro_finished)
             
         except Exception as e:
@@ -179,6 +187,7 @@ class DQEProTab(BaseDQETab):
     
     def on_dqe_pro_finished(self, success: bool, results, message: str):
         """Callback appelé quand le traitement DQE PRO est terminé"""
+        _crash_log.step("on_dqe_pro_finished START", f"success={success} results={len(results) if results else 0}")
         try:
             if hasattr(self, 'progress_timer'):
                 self.post_processing = True
@@ -199,51 +208,47 @@ class DQEProTab(BaseDQETab):
                 if _logger:
                     _logger.debug(f"{len(results)} resultats SQL stockes pour validation")
                 
+                _crash_log.step("on_dqe_pro_finished", "calling _load_organized_layers")
                 created_layers = self._load_organized_layers(results, sro, self.type_combo.currentData())
+                _crash_log.step("on_dqe_pro_finished", f"layers created={len(created_layers)}")
                 
                 if self._is_cancelled:
-                    self.progress_widget.complete_operation(False, "Opération annulée")
+                    self._cleanup_orphan_layers()
+                    self.progress_widget.complete_operation(False, "Operation annulee")
+                    send_telemetry(
+                        action="execution", mode="PRO",
+                        sro=sro, type=self.type_combo.currentData(),
+                        projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                        verdict="cancelled", cancelled=True,
+                        elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                    )
                     return
+                
+                # Stocker pour la phase finale (Excel, collapse)
+                self._pending_created_layers = created_layers
+                self._pending_results = results
+                self._pending_sro = sro
                 
                 QApplication.processEvents()
                 if self.type_combo.currentData() == 'D' and not self._is_cancelled:
+                    _crash_log.step("on_dqe_pro_finished", "Distribution: launching dist_cables_worker")
                     if _logger:
-                        _logger.info("Chargement cables decoupes (Distribution)")
-                    self.smooth_progress_to(95, "Chargement câbles découpés...")
-                    QApplication.processEvents()
-                    
-                    dist_layers = LayerManager.load_distribution_cables(
-                        sro, self.layer_group, self.layers_loaded
-                    )
-                    created_layers.extend(dist_layers)
-                    if _logger:
-                        _logger.info(f"Cables decoupes ajoutes: {len(dist_layers)}")
+                        _logger.info("Lancement worker async cables decoupes (Distribution)")
+                    self._start_dist_cables_worker(sro)
+                    return  # La suite se fait dans on_dist_cables_finished
                 
-                if self._is_cancelled:
-                    self.progress_widget.complete_operation(False, "Opération annulée")
-                    return
-                
-                self.smooth_progress_to(98, "Génération du rapport Excel...")
-                QApplication.processEvents()
-                ExcelManager.create_excel_report(results, sro, "PRO")
-                self.smooth_progress_to(100, "Finalisation...")
-                QApplication.processEvents()
-                
-                # Collapse tous les groupes pour une vue compacte
-                if self.layer_group:
-                    LayerManager.collapse_group_recursive(self.layer_group)
-                
-                final_message = f"DQE PRO terminé: {len(created_layers)} couches créées"
-                self.progress_widget.complete_operation(True, final_message)
-                
-                if iface:
-                    iface.messageBar().pushMessage(
-                        "DQE PRO", final_message,
-                        level=Qgis.Success, duration=5
-                    )
+                self._finalize_dqe_pro()
             else:
                 self.progress_widget.complete_operation(False, message)
                 QMessageBox.critical(self, "Erreur", message)
+                send_telemetry(
+                    action="execution", mode="PRO",
+                    sro=self.sro_input.lineEdit().text().strip(),
+                    type=self.type_combo.currentData(),
+                    projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                    verdict="failure", error_msg=message,
+                    elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                )
                 
         except Exception as e:
             error_msg = f"Erreur post-traitement DQE PRO: {str(e)}"
@@ -253,8 +258,162 @@ class DQEProTab(BaseDQETab):
                 _logger.error(traceback.format_exc())
             self.progress_widget.complete_operation(False, error_msg)
             QMessageBox.critical(self, "Erreur", error_msg)
+            send_telemetry(
+                action="execution", mode="PRO",
+                sro=self.sro_input.lineEdit().text().strip(),
+                type=self.type_combo.currentData(),
+                projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                verdict="failure", error_msg=error_msg,
+                elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+            )
         finally:
             self._cleanup_thread()
+            self.execute_button.setEnabled(True)
+    
+    def _start_dist_cables_worker(self, sro):
+        """Lance le worker async pour la phase DB des cables decoupes."""
+        _crash_log.step("_start_dist_cables_worker START", f"sro={sro}")
+        self._dist_worker = DistCablesWorker(sro)
+        self._dist_thread = QThread()
+        _crash_log.step("_start_dist_cables_worker", "moveToThread")
+        self._dist_worker.moveToThread(self._dist_thread)
+        self._dist_worker.finished.connect(self._on_dist_cables_finished)
+        self.progress_widget.progress_cancelled.connect(self._dist_worker.cancel)
+        self._dist_thread.started.connect(self._dist_worker.run)
+        self._dist_thread.finished.connect(self._dist_thread.deleteLater)
+        _crash_log.step("_start_dist_cables_worker", "thread.start()")
+        self._dist_thread.start()
+        _crash_log.step("_start_dist_cables_worker END")
+    
+    def _on_dist_cables_finished(self, success, db_result, message):
+        """Callback apres phase DB async des cables decoupes."""
+        _crash_log.step("_on_dist_cables_finished START", f"success={success}")
+        try:
+            if self._dist_worker:
+                try:
+                    self._dist_worker.deleteLater()
+                except RuntimeError:
+                    pass
+                self._dist_worker = None
+            if self._dist_thread:
+                try:
+                    self._dist_thread.quit()
+                    self._dist_thread.wait(5000)
+                except RuntimeError:
+                    pass
+                self._dist_thread = None
+            
+            if self._is_cancelled:
+                self._cleanup_orphan_layers()
+                self.progress_widget.complete_operation(False, "Operation annulee")
+                send_telemetry(
+                    action="execution", mode="PRO",
+                    sro=self.sro_input.lineEdit().text().strip(),
+                    type=self.type_combo.currentData(),
+                    projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                    verdict="cancelled", cancelled=True,
+                    elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                )
+                self._cleanup_thread()
+                self.execute_button.setEnabled(True)
+                return
+            
+            if success and db_result:
+                _crash_log.step("_on_dist_cables_finished", "calling create_distribution_layers")
+                self.smooth_progress_to(95, "Creation couches cables decoupes...")
+                QApplication.processEvents()
+                dist_layers = LayerManager.create_distribution_layers(
+                    db_result, self.layer_group, self.layers_loaded,
+                    cancel_check=lambda: self._is_cancelled
+                )
+                _crash_log.step("_on_dist_cables_finished", f"dist_layers={len(dist_layers)}")
+                if self._is_cancelled:
+                    self._cleanup_orphan_layers()
+                    self.progress_widget.complete_operation(False, "Operation annulee")
+                    self._cleanup_thread()
+                    self.execute_button.setEnabled(True)
+                    return
+                self._pending_created_layers.extend(dist_layers)
+                if _logger:
+                    _logger.info(f"Cables decoupes: {len(dist_layers)} couches creees")
+            elif not success and message:
+                if _logger:
+                    _logger.warning(f"Cables decoupes: {message}")
+            
+            self._finalize_dqe_pro()
+            
+        except Exception as e:
+            error_msg = f"Erreur cables decoupes: {e}"
+            if _logger:
+                import traceback
+                _logger.error(error_msg)
+                _logger.error(traceback.format_exc())
+            self.progress_widget.complete_operation(False, error_msg)
+            self._cleanup_thread()
+            self.execute_button.setEnabled(True)
+    
+    def _finalize_dqe_pro(self):
+        """Phase finale commune : Excel, collapse, message."""
+        _crash_log.step("_finalize_dqe_pro START")
+        try:
+            if self._is_cancelled:
+                self._cleanup_orphan_layers()
+                self.progress_widget.complete_operation(False, "Operation annulee")
+                send_telemetry(
+                    action="execution", mode="PRO",
+                    sro=self._pending_sro if hasattr(self, '_pending_sro') else "",
+                    type=self.type_combo.currentData() if hasattr(self, 'type_combo') else "",
+                    projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                    verdict="cancelled", cancelled=True,
+                    elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                )
+                return
+            
+            sro = self._pending_sro
+            results = self._pending_results
+            created_layers = self._pending_created_layers
+            
+            self.smooth_progress_to(98, "Generation du rapport Excel...")
+            QApplication.processEvents()
+            ExcelManager.create_excel_report(results, sro, "PRO")
+            self.smooth_progress_to(100, "Finalisation...")
+            QApplication.processEvents()
+            
+            if self.layer_group:
+                LayerManager.collapse_group_recursive(self.layer_group)
+            
+            final_message = f"DQE PRO termine: {len(created_layers)} couches creees"
+            self.progress_widget.complete_operation(True, final_message)
+            send_telemetry(
+                action="execution", mode="PRO",
+                sro=sro, type=self.type_combo.currentData(),
+                projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                verdict="success",
+                n_results=len(results) if results else 0,
+                n_layers=len(created_layers) if created_layers else 0,
+                excel_generated=True,
+                elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+            )
+            
+            if iface:
+                iface.messageBar().pushMessage(
+                    "DQE PRO", final_message,
+                    level=QGIS_SUCCESS, duration=5
+                )
+        except Exception as e:
+            error_msg = f"Erreur finalisation DQE PRO: {e}"
+            if _logger:
+                _logger.error(error_msg)
+            self.progress_widget.complete_operation(False, error_msg)
+            send_telemetry(
+                action="execution", mode="PRO",
+                sro=self._pending_sro if hasattr(self, '_pending_sro') else "",
+                type=self.type_combo.currentData() if hasattr(self, 'type_combo') else "",
+                projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                verdict="failure", error_msg=error_msg,
+                elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+            )
+        finally:
             self.execute_button.setEnabled(True)
     
     def _load_organized_layers(self, results, sro, p_type):
@@ -309,6 +468,7 @@ class DQEProTab(BaseDQETab):
         """Valide et sauvegarde le DQE PRO dans la base de données
         Structure simplifiée: 1 ligne avec categorie='dqe_result' et tout le DQE en JSON
         """
+        validate_start = time.monotonic()
         try:
             sro = self.sro_input.currentText().strip()
             if not sro:
@@ -372,6 +532,13 @@ class DQEProTab(BaseDQETab):
                 f"- Couches archivees: {layers_count}\n"
                 f"- Total: {total_saved} elements"
             )
+            send_telemetry(
+                action="validation", mode="PRO",
+                sro=sro, type=type_data, projet_code=projet_code,
+                verdict="success",
+                n_dqe_data=len(dqe_data), n_layers_saved=layers_count,
+                elapsed_ms=int((time.monotonic() - validate_start) * 1000),
+            )
             
         except Exception as e:
             import traceback
@@ -381,6 +548,14 @@ class DQEProTab(BaseDQETab):
             if _logger:
                 _logger.error("Erreur validation DQE PRO", exception=e)
             QMessageBox.critical(self, "Erreur", f"Erreur validation DQE PRO: {str(e)}")
+            send_telemetry(
+                action="validation", mode="PRO",
+                sro=self.sro_input.currentText().strip(),
+                type=self.type_combo.currentData() if hasattr(self, 'type_combo') else "",
+                projet_code="TP" if self.type_combo.currentData() == "T" else "DP",
+                verdict="failure", error_msg=str(e),
+                elapsed_ms=int((time.monotonic() - validate_start) * 1000),
+            )
     
     def _save_all_layers(self, sro, projet_code, user_name):
         """Sauvegarde TOUTES les couches du groupe dans dqejson"""

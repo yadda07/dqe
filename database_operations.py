@@ -13,10 +13,10 @@ from .models import DQEResult
 import time
 
 try:
-    from .dqe_utils import _db_manager, _logger
+    from .dqe_utils import _db_manager, _logger, _crash_log
     MODULES_AVAILABLE = True
 except ImportError:
-    _db_manager = _logger = None
+    _db_manager = _logger = _crash_log = None
     MODULES_AVAILABLE = False
 
 
@@ -92,6 +92,7 @@ class DatabaseOperations:
     
     @staticmethod
     def execute_dqe_pro(sro: str, p_type: str) -> List[Dict[str, Any]]:
+        _t0 = time.monotonic()
         with DatabaseOperations.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=DictCursor)
             
@@ -113,10 +114,14 @@ class DatabaseOperations:
                 cleaned_results.append(row_dict)
             
             print(f"Résultats nettoyés: {len(cleaned_results)} lignes retournées")
+            elapsed_ms = int((time.monotonic() - _t0) * 1000)
+            if _crash_log:
+                _crash_log.step("execute_dqe_pro END", f"n_items={len(cleaned_results)} elapsed_ms={elapsed_ms}")
             return cleaned_results
-    
+
     @staticmethod
     def execute_dqe_exe(sro: str, p_type: str, blocage: str = None) -> List[Dict[str, Any]]:
+        _t0 = time.monotonic()
         with DatabaseOperations.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=DictCursor)
             
@@ -135,10 +140,14 @@ class DatabaseOperations:
                 cleaned_results.append(row_dict)
             
             print(f"Résultats nettoyés: {len(cleaned_results)} lignes retournées")
+            elapsed_ms = int((time.monotonic() - _t0) * 1000)
+            if _crash_log:
+                _crash_log.step("execute_dqe_exe END", f"n_items={len(cleaned_results)} elapsed_ms={elapsed_ms}")
             return cleaned_results
-    
+
     @staticmethod
     def execute_dqe_pgc(sro: str, troncon: str) -> List[DQEResult]:
+        _t0 = time.monotonic()
         with DatabaseOperations.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=DictCursor)
             print(f"\n=== DÉBUT DQE PGC COMPLET ===")
@@ -251,6 +260,9 @@ class DatabaseOperations:
                     results[0].redevance_data = redevance_converted
                     print(f" Données REDEVANCE attachées: {len(redevance_converted)} lignes")
             
+            elapsed_ms = int((time.monotonic() - _t0) * 1000)
+            if _crash_log:
+                _crash_log.step("execute_dqe_pgc END", f"n_items={len(results)} elapsed_ms={elapsed_ms}")
             return results
 
     @staticmethod

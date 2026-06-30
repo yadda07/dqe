@@ -10,16 +10,18 @@ import json
 import logging
 import functools
 import re
+import time
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extras import DictCursor
-from psycopg2.pool import SimpleConnectionPool
+from psycopg2.pool import ThreadedConnectionPool
 
-from qgis.core import QgsSettings, QgsDataSourceUri, QgsMessageLog, Qgis, QgsApplication, QgsAuthMethodConfig
+from qgis.core import QgsSettings, QgsDataSourceUri, QgsMessageLog, QgsApplication, QgsAuthMethodConfig
 from qgis.utils import iface
+from .compat import QGIS_INFO, QGIS_WARNING, QGIS_CRITICAL, DIALOG_ACCEPTED
 
 
 # Constantes messages d'erreur centralisés
@@ -66,27 +68,32 @@ class DatabaseConfig:
 
 
 class SimpleLogger:
-    """Logger ULTRA SIMPLE - évite tous les problèmes de stream"""
+    """Logger simple avec filtrage par niveau"""
     
-    def __init__(self):
+    _LEVELS = {'debug': 0, 'info': 1, 'warning': 2, 'error': 3}
+    
+    def __init__(self, min_level: str = 'info'):
         self.use_qgis = True
+        self.min_level = min_level
         
     def _log(self, level: str, message: str):
-        """Log simple et sécurisé"""
+        """Log avec filtrage par niveau"""
+        if self._LEVELS.get(level, 0) < self._LEVELS.get(self.min_level, 1):
+            return
         try:
             clean_msg = str(message).replace("/", "-").replace("\\", "-")
             
             if self.use_qgis and hasattr(QgsMessageLog, 'logMessage'):
-                qgis_level = Qgis.Info
+                qgis_level = QGIS_INFO
                 if level == 'error':
-                    qgis_level = Qgis.Critical
+                    qgis_level = QGIS_CRITICAL
                 elif level == 'warning':
-                    qgis_level = Qgis.Warning
+                    qgis_level = QGIS_WARNING
                 
                 QgsMessageLog.logMessage(f"[DQE] {clean_msg}", 'DQE Plugin', qgis_level)
             else:
                 print(f"[DQE {level.upper()}] {clean_msg}")
-        except:
+        except Exception:
             print(f"[DQE {level.upper()}] {message}")
     
     def debug(self, message: str, **kwargs):
@@ -119,16 +126,27 @@ class DatabaseManager:
         self._config = None
         self._connection_pool = None
     
-    def initialize(self, config: DatabaseConfig, pool_size: int = 3):
-        """Initialise avec pool réduit"""
+    def initialize(self, config: DatabaseConfig, pool_size: int = 2):
+        """Initialise avec pool thread-safe (ThreadedConnectionPool).
+
+        ThreadedConnectionPool est obligatoire car le pool est accédé
+        concurremment par le main thread (validation SRO, autocomplete)
+        et par les workers QThread (execute_dqe_pro/exe/pgc).
+        SimpleConnectionPool n'est pas thread-safe → corruption d'état.
+
+        pool_size=2 par défaut: avec 120 clients QGIS, maxconn=2 plafonne
+        à 240 connexions. Ajuster selon max_connections du serveur PostgreSQL.
+        """
         self._config = config
+        _t0 = time.monotonic()
         try:
             conn_params = config.to_dict()
             conn_params['connect_timeout'] = 10
-            self._connection_pool = SimpleConnectionPool(
+            self._connection_pool = ThreadedConnectionPool(
                 1, pool_size, **conn_params
             )
-            self.logger.info(f"Pool DB initialisé ({pool_size} connexions)")
+            elapsed_ms = int((time.monotonic() - _t0) * 1000)
+            self.logger.info(f"Pool DB thread-safe initialisé (pool_size={pool_size} elapsed_ms={elapsed_ms})")
         except Exception as e:
             self.logger.error("Erreur init pool DB", exception=e)
             raise
@@ -150,6 +168,10 @@ class DatabaseManager:
             raise
         finally:
             if connection:
+                try:
+                    connection.rollback()
+                except Exception as rb_err:
+                    self.logger.warning(f"rollback échoué avant putconn: {rb_err}")
                 self._connection_pool.putconn(connection)
     
     @contextmanager
@@ -191,6 +213,33 @@ class DatabaseManager:
         """Indique si le pool de connexions est actif"""
         return self._connection_pool is not None
 
+    def ping(self, timeout: int = 3) -> bool:
+        """Vérifie que la base de données est joignable (ping réel).
+
+        Crée une connexion temporaire avec un timeout court pour refléter
+        l'état réseau actuel, sans se fier au pool qui peut contenir des
+        connexions mortes après une déconnexion VPN.
+        """
+        self.logger.debug(f"ping_db start timeout={timeout}")
+        if not self._config:
+            self.logger.debug("ping_db failed reason=config_missing")
+            return False
+        try:
+            _t0 = time.monotonic()
+            conn_params = self._config.to_dict()
+            conn_params['connect_timeout'] = timeout
+            conn = psycopg2.connect(**conn_params)
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            conn.close()
+            elapsed_ms = int((time.monotonic() - _t0) * 1000)
+            self.logger.debug(f"ping_db ok elapsed_ms={elapsed_ms}")
+            return True
+        except Exception as e:
+            self.logger.debug(f"ping_db failed reason={type(e).__name__} message={str(e)[:100]}")
+            return False
+
     @property
     def config(self):
         """Retourne la configuration DB courante"""
@@ -211,44 +260,44 @@ class ConfigurationManager:
     def get_db_config(self) -> DatabaseConfig:
         """Recupere config DB avec recherche ciblee AUVERGNE"""
         
-        self.logger.info("=== DEBUT RECHERCHE CONFIGURATION DB ===")
+        self.logger.debug("Recherche configuration DB")
         
         # Etape 1: Chercher connexion QGIS avec DB=AUVERGNE + host cible
-        self.logger.info("Etape 1: Recherche connexion QGIS (DB=AUVERGNE, host=10.241.228.107)")
+        self.logger.debug("Recherche connexion QGIS (DB=AUVERGNE, host=10.241.228.107)")
         try:
             config = self._find_target_qgis_connection()
             if config:
-                self.logger.info("Config trouvee depuis connexion QGIS ciblee")
+                self.logger.debug("Config trouvee depuis connexion QGIS ciblee")
                 return config
         except Exception as e:
             self.logger.warning(f"Echec recherche QGIS ciblee: {e}")
         
         # Etape 2: Fichier JSON local
-        self.logger.info("Etape 2: Recherche fichier JSON")
+        self.logger.debug("Recherche fichier JSON")
         try:
             config = self._get_json_config()
             if config:
-                self.logger.info("Config depuis JSON")
+                self.logger.debug("Config depuis JSON")
                 return config
         except Exception as e:
             self.logger.warning(f"Echec config JSON: {e}")
         
         # Etape 3: Variables d'environnement
-        self.logger.info("Etape 3: Recherche variables ENV")
+        self.logger.debug("Recherche variables ENV")
         try:
             config = self._get_env_config()
             if config:
-                self.logger.info("Config depuis ENV")
+                self.logger.debug("Config depuis ENV")
                 return config
         except Exception as e:
             self.logger.warning(f"Echec config ENV: {e}")
         
         # Etape 4: Dialog de connexion manuelle
-        self.logger.info("Etape 4: Affichage interface utilisateur")
+        self.logger.debug("Affichage interface utilisateur")
         try:
             config = self._get_user_connection()
             if config:
-                self.logger.info("Config depuis interface utilisateur")
+                self.logger.debug("Config depuis interface utilisateur")
                 return config
         except Exception as e:
             self.logger.error(f"Erreur lors de l'affichage de l'interface de connexion: {e}")
@@ -275,7 +324,7 @@ class ConfigurationManager:
             has_user = bool(config_data['user'])
             has_pass = bool(config_data['password'])
             has_auth = bool(authcfg)
-            self.logger.info(
+            self.logger.debug(
                 f"Connexion '{conn_name}': host={config_data['host']}, "
                 f"db={config_data['database']}, "
                 f"user={'oui' if has_user else 'non'}, "
@@ -294,7 +343,7 @@ class ConfigurationManager:
                             config_data['user'] = config_map.get('username', '')
                         if not config_data['password']:
                             config_data['password'] = config_map.get('password', '')
-                        self.logger.info(f"Credentials recuperes via authcfg pour '{conn_name}'")
+                        self.logger.debug(f"Credentials recuperes via authcfg pour '{conn_name}'")
                     else:
                         self.logger.warning(f"Echec chargement authcfg '{authcfg}' pour '{conn_name}'")
                 except Exception as e:
@@ -305,8 +354,12 @@ class ConfigurationManager:
             self.logger.warning(f"Erreur lecture connexion '{conn_name}': {e}")
             return None
     
-    def _test_connection(self, config_data: dict) -> Optional[DatabaseConfig]:
-        """Teste une connexion et retourne un DatabaseConfig si valide."""
+    def _test_connection(self, config_data: dict, skip_network_test: bool = False) -> Optional[DatabaseConfig]:
+        """Teste une connexion et retourne un DatabaseConfig si valide.
+        
+        Si skip_network_test=True, valide uniquement que les champs sont presents
+        sans ouvrir de connexion reseau (utile au demarrage de QGIS).
+        """
         if not config_data:
             self.logger.warning("Test connexion: config_data vide")
             return None
@@ -316,10 +369,14 @@ class ConfigurationManager:
             return None
         try:
             test_config = DatabaseConfig(**config_data)
+            if skip_network_test:
+                self.logger.debug("Connexion acceptee sans test reseau (credentials presents)")
+                return test_config
             conn_params = test_config.to_dict()
-            conn_params['connect_timeout'] = 5
+            conn_params['connect_timeout'] = 10
             conn_test = psycopg2.connect(**conn_params)
             conn_test.close()
+            self.logger.debug("Test connexion reseau: OK")
             return test_config
         except Exception as e:
             self.logger.warning(f"Test connexion echec ({config_data.get('host')}/{config_data.get('database')}): {e}")
@@ -333,7 +390,7 @@ class ConfigurationManager:
             connections = settings.childGroups()
             settings.endGroup()
             
-            self.logger.info(f"Connexions QGIS disponibles: {connections}")
+            self.logger.debug(f"Connexions QGIS disponibles: {connections}")
             
             # Passe 1: Chercher par DB=AUVERGNE ET host=10.241.228.107
             for conn_name in connections:
@@ -343,7 +400,7 @@ class ConfigurationManager:
                 db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE
                 host_match = config_data.get('host', '') == self.TARGET_HOST
                 if db_match and host_match:
-                    self.logger.info(f"Connexion ciblee trouvee: '{conn_name}' (DB={self.TARGET_DATABASE}, host={self.TARGET_HOST})")
+                    self.logger.debug(f"Connexion ciblee trouvee: '{conn_name}' (DB={self.TARGET_DATABASE}, host={self.TARGET_HOST})")
                     result = self._test_connection(config_data)
                     if result:
                         return result
@@ -357,13 +414,26 @@ class ConfigurationManager:
                     continue
                 host_match = config_data.get('host', '') == self.TARGET_HOST
                 if host_match:
-                    self.logger.info(f"Connexion AUVERGNE trouvee: '{conn_name}' (host={self.TARGET_HOST})")
+                    self.logger.debug(f"Connexion AUVERGNE trouvee: '{conn_name}' (host={self.TARGET_HOST})")
                     result = self._test_connection(config_data)
                     if result:
                         return result
             
-            self.logger.info("Aucune connexion QGIS ciblee trouvee")
-            return None
+            # Passe 3: Meme recherche mais accepter sans test reseau
+            # (le test reseau peut echouer au demarrage: timeout, VPN, etc.)
+            for conn_name in connections:
+                config_data = self._read_qgis_connection(conn_name)
+                if not config_data:
+                    continue
+                db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE
+                host_match = config_data.get('host', '') == self.TARGET_HOST
+                if db_match and host_match:
+                    result = self._test_connection(config_data, skip_network_test=True)
+                    if result:
+                        self.logger.debug(f"Connexion acceptee sans test reseau: '{conn_name}'")
+                        return result
+            
+            self.logger.debug("Aucune connexion QGIS ciblee trouvee")
             
         except Exception as e:
             self.logger.error(f"Erreur recherche connexions QGIS: {e}")
@@ -403,7 +473,8 @@ class ConfigurationManager:
             from qgis.utils import iface
             dialog = ConnectionDialog(parent=iface.mainWindow() if iface else None)
             
-            if dialog.exec_() == dialog.Accepted:
+            from .compat import exec_dialog
+            if exec_dialog(dialog) == DIALOG_ACCEPTED:
                 config = dialog.get_config()
                 if config:
                     self.logger.info("Configuration de connexion obtenue via interface utilisateur")
@@ -518,7 +589,7 @@ class FileUtils:
         return os.path.join(os.path.dirname(__file__), 'files', template_name)
 
 
-def initialize_dqe_system(pool_size: int = 3) -> bool:
+def initialize_dqe_system(pool_size: int = 2) -> bool:
     """Initialise système DQE SIMPLE"""
     logger = SimpleLogger()
     
@@ -529,7 +600,7 @@ def initialize_dqe_system(pool_size: int = 3) -> bool:
         global _db_manager, _config_manager, _validator
         _db_manager.initialize(db_config, pool_size)
         
-        logger.info("Système DQE initialisé")
+        logger.debug("Système DQE initialisé")
         return True
         
     except Exception as e:
@@ -545,8 +616,8 @@ def cleanup_dqe_system():
         if _db_manager and _db_manager._connection_pool:
             _db_manager._connection_pool.closeall()
             _db_manager._connection_pool = None
-            logger.info("Pool de connexions DB fermé")
-        logger.info("Système DQE nettoyé")
+            logger.debug("Pool de connexions DB fermé")
+        logger.debug("Système DQE nettoyé")
     except Exception as e:
         logger.error("Erreur nettoyage", exception=e)
 
@@ -586,39 +657,79 @@ def log_execution_time(func):
             raise
     return wrapper
 class QtCompatibility:
-    """Utilitaires pour assurer la compatibilité entre toutes les versions de Qt/PyQt5"""
+    """Utilitaires pour assurer la compatibilite entre Qt5 (QGIS 3.x) et Qt6 (QGIS 4.x)"""
     
     @staticmethod
     def set_rich_text_format(message_box):
-        """Définit le format RichText de manière compatible avec toutes les versions Qt"""
+        """Definit le format RichText de maniere compatible Qt5/Qt6"""
         try:
-            from PyQt5.QtCore import Qt
-            message_box.setTextFormat(Qt.RichText)
+            from .compat import QT_RICHTEXT
+            message_box.setTextFormat(QT_RICHTEXT)
             return True
         except (AttributeError, ImportError):
             try:
-                from qgis.PyQt.QtCore import Qt
-                message_box.setTextFormat(Qt.RichText)
+                message_box.setTextFormat(1)  # RichText = 1
                 return True
-            except (AttributeError, ImportError):
-                try:
-                    message_box.setTextFormat(1)  # RichText = 1 dans Qt
-                    return True
-                except:
-                    return False
+            except Exception:
+                return False
     
     @staticmethod
     def get_message_box_accepted():
-        """Retourne la constante QMessageBox.Accepted de manière compatible"""
+        """Retourne la constante QDialog.Accepted de maniere compatible"""
         try:
-            from PyQt5.QtWidgets import QMessageBox
-            return QMessageBox.Accepted
+            from .compat import DIALOG_ACCEPTED
+            return DIALOG_ACCEPTED
         except (AttributeError, ImportError):
+            return 1
+class CrashLogger:
+    """Logger fichier avec flush immediat. Survit aux crash QGIS (segfault).
+    La derniere ligne ecrite avant le crash indique le point exact du probleme.
+    Fichier: <plugin_dir>/dqe_crash.log
+    """
+
+    def __init__(self):
+        self._file = None
+        self._path = None
+        try:
+            plugin_dir = os.path.dirname(__file__)
+            self._path = os.path.join(plugin_dir, 'dqe_crash.log')
+            self._file = open(self._path, 'a', encoding='utf-8')
+            self._write("=== SESSION START ===")
+        except Exception:
+            pass
+
+    def _write(self, message):
+        if self._file is None:
+            return
+        try:
+            from datetime import datetime
+            ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            self._file.write(f"[{ts}] {message}\n")
+            self._file.flush()
+            os.fsync(self._file.fileno())
+        except Exception:
+            pass
+
+    def step(self, location, detail=""):
+        msg = location
+        if detail:
+            msg += f" | {detail}"
+        self._write(msg)
+
+    def error(self, location, err):
+        self._write(f"ERROR {location} | {err}")
+
+    def close(self):
+        if self._file:
             try:
-                from qgis.PyQt.QtWidgets import QMessageBox
-                return QMessageBox.Accepted
-            except (AttributeError, ImportError):
-                return 1  # QMessageBox.Accepted = 1
+                self._write("=== SESSION END ===")
+                self._file.close()
+            except Exception:
+                pass
+            self._file = None
+
+
+_crash_log = CrashLogger()
 _db_manager = DatabaseManager()
 _config_manager = ConfigurationManager()
 _validator = ValidationUtils()
@@ -627,5 +738,5 @@ __all__ = [
     'DatabaseManager', 'ConfigurationManager', 'ValidationUtils', 'SimpleLogger',
     'DatabaseConfig', 'FileUtils', 'QtCompatibility', 'initialize_dqe_system', 'cleanup_dqe_system',
     'retry_on_db_error', 'log_execution_time',
-    '_db_manager', '_config_manager', '_validator', '_logger'
+    '_db_manager', '_config_manager', '_validator', '_logger', '_crash_log', 'CrashLogger'
 ]

@@ -20,21 +20,15 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 
-from PyQt5.QtWidgets import (
+from .compat import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox,
-    QMessageBox, QLineEdit, QTabWidget, QProgressBar, QTextEdit, 
-    QGroupBox, QFormLayout, QCheckBox, QSpinBox, QFrame, QDialog, 
-    QDialogButtonBox, QCompleter
+    QMessageBox, QTabWidget, QFrame, QDialog, QDialogButtonBox,
+    Qt, QUrl, QFont, QDesktopServices, QTimer,
+    FRAME_HLINE, FRAME_SUNKEN, BUTTONBOX_CLOSE, BUTTONBOX_HELPROLE
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QStringListModel, QThread, QObject, QUrl
-from PyQt5.QtGui import QFont, QColor, QDesktopServices
 
-from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsDataSourceUri, QgsField,
-    QgsFeature, Qgis, QgsApplication, QgsTask, QgsTaskManager
-)
+from qgis.core import Qgis
 from qgis.utils import iface
-from PyQt5.QtCore import QVariant
 
 try:
     from .dqe_utils import _db_manager, _logger, _validator, FileUtils
@@ -54,19 +48,24 @@ from .models import DQEResult, OperationType
 
 
 class DQEChargeur(QDialog):
+    DB_STATUS_INTERVAL_MS = 5000
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.setWindowTitle("Chargeur DQE")
         self.setMinimumSize(380, 280)
         self.resize(400, 320)
         self.setModal(False)
-        
+
+        self._db_status_timer = None
+
         # Police Corbel globale
         self.setStyleSheet("QWidget { font-family: 'Corbel', 'Segoe UI', sans-serif; }")
-        
+
         self.setup_ui()
-        
+        self._start_db_status_refresh()
+
         if _logger:
             _logger.info("Interface DQE Chargeur initialisee")
     
@@ -92,15 +91,15 @@ class DQEChargeur(QDialog):
         self._update_db_status()
         header_layout.addWidget(self.db_status_label)
         
-        version_label = QLabel("v3.5.1")
+        version_label = QLabel("v4.0.0")
         version_label.setStyleSheet("color: #666; font-style: italic;")
         header_layout.addWidget(version_label)
         
         layout.addLayout(header_layout)
         
         line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
+        line.setFrameShape(FRAME_HLINE)
+        line.setFrameShadow(FRAME_SUNKEN)
         layout.addWidget(line)
         
         self.tab_widget = QTabWidget()
@@ -123,12 +122,12 @@ class DQEChargeur(QDialog):
         
         layout.addWidget(self.tab_widget)
         
-        button_box = QDialogButtonBox(QDialogButtonBox.Close)
+        button_box = QDialogButtonBox(BUTTONBOX_CLOSE)
         button_box.rejected.connect(self.close)
         
         help_button = QPushButton("Aide")
         help_button.clicked.connect(self.show_help)
-        button_box.addButton(help_button, QDialogButtonBox.HelpRole)
+        button_box.addButton(help_button, BUTTONBOX_HELPROLE)
         
         layout.addWidget(button_box)
         pass

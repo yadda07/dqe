@@ -8,12 +8,12 @@ avec support des fonctionnalités PRO, EXE et PGC.
 Architecture modulaire conçue pour la maintenabilité et l'extensibilité.
 
 Auteur: DEVTEAM NGE
-Version: 3.5.1
-Compatibilité: QGIS 3.x
+Version: 4.0.0
+Compatibilité: QGIS 3.28+ / 4.0+
 """
 
 # Métadonnées du plugin
-__version__ = "3.5.1"
+__version__ = "4.0.0"
 __author__ = "DEVTEM NGE"
 __email__ = "yadda@ext.nge.fr"
 __license__ = "GPL v3"
@@ -39,9 +39,6 @@ def classFactory(iface):
         # Import paresseux pour éviter les erreurs de dépendances au chargement initial
         from .dqe_chargeur import DqeChargeurPlugin
         
-        # Log du chargement pour le débogage
-        print(f"[DQE] Initialisation du plugin DQE Chargeur v{__version__}")
-        
         return DqeChargeurPlugin(iface)
         
     except ImportError as e:
@@ -51,17 +48,17 @@ def classFactory(iface):
         
         # Afficher un message à l'utilisateur si possible
         try:
-            from qgis.core import Qgis
+            from .compat import QGIS_CRITICAL
             from qgis.utils import iface as qgis_iface
             if qgis_iface:
                 qgis_iface.messageBar().pushMessage(
                     "Erreur DQE Plugin", 
                     error_msg, 
-                    level=Qgis.Critical,
+                    level=QGIS_CRITICAL,
                     duration=10
                 )
-        except:
-            pass  # Si même l'affichage d'erreur échoue, continuer silencieusement
+        except Exception:
+            pass
             
         raise
         
@@ -84,7 +81,7 @@ def check_dependencies():
         'psycopg2',
         'pandas', 
         'openpyxl',
-        'PyQt5',
+        'qgis.PyQt',
         'qgis.core',
         'qgis.gui'
     ]

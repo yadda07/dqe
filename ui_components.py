@@ -5,12 +5,12 @@ Composants d'interface utilisateur pour le plugin DQE Chargeur
 """
 
 from typing import List
-from PyQt5.QtWidgets import (
+from .compat import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox,
-    QProgressBar, QCompleter
+    QProgressBar, QCompleter, Qt, QTimer, pyqtSignal, QStringListModel,
+    QColor, QApplication, QThread, QObject,
+    QT_CASE_INSENSITIVE, QT_MATCH_CONTAINS, COMPLETER_POPUP
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QStringListModel
-from PyQt5.QtGui import QColor
 
 try:
     from .dqe_utils import _db_manager, _logger
@@ -114,7 +114,6 @@ class ProgressWidget(QWidget):
         Retourne la nouvelle valeur de current_progress
         """
         import time
-        from qgis.PyQt.QtWidgets import QApplication
         
         steps = max(1, int((target_value - current_progress) / 2))
         for i in range(steps):
@@ -129,47 +128,161 @@ class ProgressWidget(QWidget):
         return current_progress
 
 
+class _SROListWorker(QObject):
+    """Worker pour chargement async de la liste SRO hors main thread."""
+    finished = pyqtSignal(list, bool)
+    error = pyqtSignal(str)
+
+    def run(self):
+        try:
+            if _db_manager and _db_manager.is_connected:
+                query = "SELECT sro FROM rip_avg_nge.za_sro ORDER BY sro LIMIT 1000"
+                results = _db_manager.execute_query(query)
+                sro_list = [row[0] for row in results if row[0] and str(row[0]).strip()]
+                truncated = len(results) >= 1000
+                self.finished.emit(sro_list, truncated)
+            else:
+                self.finished.emit([], False)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class _SROListLoader(QObject):
+    """Singleton partagé: charge la liste SRO une seule fois pour toutes les SROComboBox.
+
+    Évite l'épuisement du pool de connexions quand plusieurs onglets (PRO, EXE, PGC)
+    créent chacun une SROComboBox simultanément. Une seule requête, un seul thread,
+    un seul connexion - le résultat est diffusé à tous les abonnés.
+    """
+    _instance = None
+
+    def __init__(self):
+        super().__init__()
+        self._thread = None
+        self._worker = None
+        self._sro_list = []
+        self._truncated = False
+        self._loaded = False
+        self._loading = False
+        self._subscribers = []
+
+    @classmethod
+    def instance(cls) -> '_SROListLoader':
+        if cls._instance is None:
+            cls._instance = _SROListLoader()
+        return cls._instance
+
+    def subscribe(self, on_loaded, on_error):
+        """Abonne un callback. Sert le cache si déjà chargé, déclenche le chargement sinon."""
+        self._subscribers.append((on_loaded, on_error))
+        if self._loaded:
+            on_loaded(self._sro_list, self._truncated)
+        elif not self._loading:
+            self._start_loading()
+
+    def unsubscribe(self, on_loaded, on_error):
+        """Désabonne un callback (appelé à la destruction du widget)."""
+        try:
+            self._subscribers.remove((on_loaded, on_error))
+        except ValueError:
+            pass
+
+    def _start_loading(self):
+        self._loading = True
+        self._worker = _SROListWorker()
+        self._thread = QThread()
+        self._worker.moveToThread(self._thread)
+        self._worker.finished.connect(self._on_loaded)
+        self._worker.error.connect(self._on_error)
+        self._thread.started.connect(self._worker.run)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.start()
+
+    def _on_loaded(self, sro_list, truncated):
+        self._sro_list = sro_list
+        self._truncated = truncated
+        self._loaded = True
+        self._loading = False
+        if _logger:
+            _logger.info(f"Liste SRO chargée: n_items={len(sro_list)} truncated={truncated}")
+        if truncated and _logger:
+            _logger.warning("Liste SRO tronquée à 1000 entrées - utiliser la recherche pour les SRO au-delà")
+        for on_loaded, _ in self._subscribers:
+            on_loaded(sro_list, truncated)
+        self._cleanup()
+
+    def _on_error(self, error_msg):
+        self._loading = False
+        if _logger:
+            _logger.error("Erreur chargement SRO", exception=Exception(error_msg))
+        for _, on_error in self._subscribers:
+            on_error(error_msg)
+        self._cleanup()
+
+    def _cleanup(self):
+        if self._thread:
+            self._thread.quit()
+            self._thread.wait(5000)
+            self._thread = None
+        if self._worker:
+            self._worker.deleteLater()
+            self._worker = None
+
+    def refresh(self):
+        """Force un rechargement de la liste (efface le cache)."""
+        self._loaded = False
+        self._sro_list = []
+        self._truncated = False
+        if not self._loading:
+            self._start_loading()
+
+
 class SROComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setEditable(True)
         self.sro_list = []
-        self.load_sro_list()
-        
-    def load_sro_list(self):
-        """Charge la liste des SRO avec autocomplétion"""
-        try:
-            if _db_manager and _db_manager.is_connected:
-                query = "SELECT sro FROM rip_avg_nge.za_sro"
-                
-                print(f"Chargement SRO avec requête: {query}")
-                results = _db_manager.execute_query(query)
-                self.sro_list = [row[0] for row in results if row[0] and str(row[0]).strip()]
-                model = QStringListModel(self.sro_list)
-                completer = QCompleter()
-                completer.setModel(model)
-                completer.setCaseSensitivity(Qt.CaseInsensitive)
-                completer.setFilterMode(Qt.MatchContains)  # Recherche partielle
-                completer.setCompletionMode(QCompleter.PopupCompletion)  # Mode popup
-                completer.setMaxVisibleItems(10)  # Maximum 10 éléments visibles
-                line_edit = self.lineEdit()
-                line_edit.setCompleter(completer)
-                line_edit.textChanged.connect(lambda text: self._show_completions(text, completer))
-                
-                print(f" Liste SRO chargée: {len(self.sro_list)} éléments")
-                if len(self.sro_list) > 0:
-                    print(f"Premiers SRO: {', '.join(self.sro_list[:5])}{'...' if len(self.sro_list) > 5 else ''}")
-                
-                if _logger:
-                    _logger.info(f"Liste SRO chargée: {len(self.sro_list)} éléments")
-                    
-        except Exception as e:
-            error_msg = f"Erreur chargement liste SRO: {str(e)}"
-            print(f" {error_msg}")
-            
-            if _logger:
-                _logger.error("Erreur chargement SRO", exception=e)
-            self.sro_list = []
+        self._is_destroyed = False
+        self._loader = _SROListLoader.instance()
+        self._loader.subscribe(self._on_sro_list_loaded, self._on_sro_list_error)
+
+    def _on_sro_list_loaded(self, sro_list, truncated):
+        """Callback appelé quand la liste SRO est chargée (main thread)."""
+        if self._is_destroyed:
+            return
+        self.sro_list = sro_list
+        self._setup_completer()
+
+    def _on_sro_list_error(self, error_msg):
+        """Callback appelé en cas d'erreur de chargement (main thread)."""
+        if self._is_destroyed:
+            return
+        self.sro_list = []
+
+    def closeEvent(self, event):
+        """Sécurise la fermeture: marque détruit et se désabonne."""
+        self._is_destroyed = True
+        self._loader.unsubscribe(self._on_sro_list_loaded, self._on_sro_list_error)
+        super().closeEvent(event) if hasattr(super(), 'closeEvent') else None
+
+    def deleteLater(self):
+        """Marque le widget comme détruit avant la suppression Qt."""
+        self._is_destroyed = True
+        self._loader.unsubscribe(self._on_sro_list_loaded, self._on_sro_list_error)
+        super().deleteLater()
+
+    def _setup_completer(self):
+        """Configure le QCompleter avec la liste SRO courante."""
+        model = QStringListModel(self.sro_list)
+        completer = QCompleter()
+        completer.setModel(model)
+        completer.setCaseSensitivity(QT_CASE_INSENSITIVE)
+        completer.setFilterMode(QT_MATCH_CONTAINS)
+        completer.setCompletionMode(COMPLETER_POPUP)
+        completer.setMaxVisibleItems(10)
+        line_edit = self.lineEdit()
+        line_edit.setCompleter(completer)
+        line_edit.textChanged.connect(lambda text: self._show_completions(text, completer))
     
     def _show_completions(self, text: str, completer: QCompleter):
         """Force l'affichage des suggestions quand on tape"""
@@ -188,8 +301,7 @@ class SROComboBox(QComboBox):
     
     def refresh_sro_list(self):
         """Méthode pour rafraîchir la liste SRO à la demande"""
-        print(" Rafraîchissement de la liste SRO...")
-        self.load_sro_list()
+        self._loader.refresh()
     
     def get_sro_count(self) -> int:
         """Retourne le nombre de SRO chargés"""
@@ -227,9 +339,13 @@ class TronconComboBox(QComboBox):
                 FROM gc_exe.t_cheminement 
                 WHERE sro = %s AND gc IS NOT NULL AND gc != ''
                 ORDER BY gc
+                LIMIT 500
             """
             results = _db_manager.execute_query(query, (self.current_sro,))
             troncons = [row[0] for row in results if row[0] and row[0].strip()]
+            
+            if len(results) >= 500 and _logger:
+                _logger.warning(f"Tronçons tronqués à 500 pour SRO={self.current_sro}")
             
             self.clear()
             self.addItems(troncons)

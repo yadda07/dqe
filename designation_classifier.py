@@ -89,7 +89,7 @@ class DesignationClassifier:
                 if (any(x in dl for x in ["câble optique", "câble de"]) and
                         any(x in dl for x in ["aérien", "façade", "conduite"]) and
                         any(x in dl for x in ["fo en", "fo "])):
-                    return None  # Skip — replaced by cut cables
+                    return None  # Skip - replaced by cut cables
             if "aérien" in dl:
                 return "Câble aérien"
             if "conduite" in dl or "sout" in dl:

@@ -15,16 +15,16 @@ from psycopg2 import sql
 from qgis.core import (
     QgsDataSourceUri, QgsProject, QgsVectorLayer, QgsField, QgsFields, QgsFeature, QgsGeometry
 )
-from qgis.PyQt.QtCore import QVariant
 
 from .database_operations import DatabaseOperations
 
 try:
-    from .dqe_utils import _db_manager, _logger
+    from .dqe_utils import _db_manager, _logger, _crash_log
     MODULES_AVAILABLE = True
 except ImportError:
     _db_manager = _logger = None
     MODULES_AVAILABLE = False
+    from .dqe_utils import _crash_log
 
 
 class LayerManager:
@@ -32,11 +32,36 @@ class LayerManager:
 
     @classmethod
     def cleanup_temp_tables(cls):
-        """Supprime toutes les tables temporaires creees pendant la session."""
+        """Supprime toutes les tables temporaires creees pendant la session.
+
+        Retire d'abord les couches QGIS referencant chaque table pour eviter
+        la boucle infinie de requetes QGIS sur des tables supprimees.
+        """
         if not cls._temp_tables_created:
             return
         try:
+            from qgis.core import QgsProject
             from .database_operations import DatabaseOperations
+
+            project = QgsProject.instance()
+            removed_layers = 0
+            for table_name in cls._temp_tables_created:
+                qualified = f"temporaire.{table_name}"
+                for layer in list(project.mapLayers().values()):
+                    try:
+                        if qualified in layer.source():
+                            project.removeMapLayer(layer.id())
+                            removed_layers += 1
+                    except RuntimeError:
+                        pass
+            if removed_layers:
+                from .dqe_utils import _logger
+                if _logger:
+                    _logger.info(
+                        f"cleanup_temp_tables: {removed_layers} couches QGIS "
+                        f"retirees avant DROP, tables={len(cls._temp_tables_created)}"
+                    )
+
             with DatabaseOperations.get_connection() as conn:
                 cursor = conn.cursor()
                 for table_name in cls._temp_tables_created:
@@ -46,36 +71,33 @@ class LayerManager:
                                 sql.Identifier('temporaire', table_name)
                             )
                         )
-                        print(f"Table temporaire supprimee: temporaire.{table_name}")
                     except Exception as e:
-                        print(f"Erreur suppression temporaire.{table_name}: {e}")
+                        from .dqe_utils import _logger
+                        if _logger:
+                            _logger.warning(f"DROP temporaire.{table_name} echoue: {e}")
                 conn.commit()
                 cursor.close()
             cls._temp_tables_created.clear()
         except Exception as e:
-            print(f"Erreur nettoyage tables temporaires: {e}")
+            from .dqe_utils import _logger
+            if _logger:
+                _logger.warning(f"Erreur nettoyage tables temporaires: {e}")
 
     @staticmethod
-    def create_compatible_field(name: str, field_type, type_name: str = None):
+    def create_compatible_field(name: str, semantic_type, type_name: str = None):
+        """Crée un QgsField compatible QGIS 3.28 -> 4.99.
+
+        semantic_type : 'int' | 'string' | 'double' | 'bool' | 'longlong'.
+        Le type Qt (QMetaType.Type >= 3.38, sinon QVariant.Type) est résolu via
+        compat.field_type pour éviter le constructeur QVariant deprecated sur 3.38+
+        tout en restant compatible avec le plancher 3.28.
+        Un type Qt déjà résolu reste accepté (rétro-compatibilité défensive).
         """
-        Crée un QgsField compatible avec différentes versions de QGIS
-        """
-        try:
-            field = QgsField()
-            field.setName(name)
-            field.setType(field_type)
-            if type_name:
-                field.setTypeName(type_name)
-            return field
-        except:
-            try:
-                from qgis.PyQt.QtCore import QVariant
-                if type_name:
-                    return QgsField(name, field_type, type_name)
-                else:
-                    return QgsField(name, field_type)
-            except:
-                return QgsField(name, field_type)
+        from .compat import field_type as _field_type
+        qt_type = _field_type(semantic_type) if isinstance(semantic_type, str) else semantic_type
+        if type_name:
+            return QgsField(name, qt_type, type_name)
+        return QgsField(name, qt_type)
     
     @staticmethod
     def create_layer_group(name: str):
@@ -105,6 +127,7 @@ class LayerManager:
             db_params["user"], 
             db_params["password"]
         )
+        uri.setUseEstimatedMetadata(True)
         return uri
     
     @staticmethod
@@ -218,12 +241,13 @@ class LayerManager:
             
             if layer.isValid():
                 feature_count = layer.featureCount()
-                print(f"        Couche valide avec {feature_count} entités")
-                
                 if feature_count > 0:
+                    if _logger:
+                        _logger.debug(f"Couche valide: {designation} n_items={feature_count}")
                     return layer
                 else:
-                    print(f"        ÉCHEC: Couche vide (0 entités)")
+                    if _logger:
+                        _logger.info(f"Couche vide rejetée: {designation} (0 entité)")
                     return None
             else:
                 error = layer.error().message() if layer.error() else "Erreur inconnue"
@@ -326,16 +350,16 @@ class LayerManager:
                 return None
             provider = memory_layer.dataProvider()
             fields = QgsFields()
-            fields.append(LayerManager.create_compatible_field("troncon_gid", QVariant.Int, "integer"))
-            fields.append(LayerManager.create_compatible_field("segment_id", QVariant.String, "text"))
-            fields.append(LayerManager.create_compatible_field("cm_gest_do", QVariant.String, "text"))
-            fields.append(LayerManager.create_compatible_field("cm_compo", QVariant.String, "text"))
-            fields.append(LayerManager.create_compatible_field("long", QVariant.Double, "double"))
-            fields.append(LayerManager.create_compatible_field("distance_route_m", QVariant.Double, "double"))
-            fields.append(LayerManager.create_compatible_field("angle_parallelisme_deg", QVariant.Double, "double"))
-            fields.append(LayerManager.create_compatible_field("confiance_niveau", QVariant.String, "text"))
-            fields.append(LayerManager.create_compatible_field("methode_attribution", QVariant.String, "text"))
-            fields.append(LayerManager.create_compatible_field("nb_pot_ac", QVariant.Int, "integer"))
+            fields.append(LayerManager.create_compatible_field("troncon_gid", "int", "integer"))
+            fields.append(LayerManager.create_compatible_field("segment_id", "string", "text"))
+            fields.append(LayerManager.create_compatible_field("cm_gest_do", "string", "text"))
+            fields.append(LayerManager.create_compatible_field("cm_compo", "string", "text"))
+            fields.append(LayerManager.create_compatible_field("long", "double", "double"))
+            fields.append(LayerManager.create_compatible_field("distance_route_m", "double", "double"))
+            fields.append(LayerManager.create_compatible_field("angle_parallelisme_deg", "double", "double"))
+            fields.append(LayerManager.create_compatible_field("confiance_niveau", "string", "text"))
+            fields.append(LayerManager.create_compatible_field("methode_attribution", "string", "text"))
+            fields.append(LayerManager.create_compatible_field("nb_pot_ac", "int", "integer"))
             
             provider.addAttributes(fields)
             memory_layer.updateFields()
@@ -406,50 +430,65 @@ class LayerManager:
             return None
     
     @staticmethod
-    def load_distribution_cables(sro, layer_group=None, layers_loaded=None):
-        """Chargement des câbles découpés pour Distribution"""
+    def prepare_distribution_cables_db(sro, worker=None):
+        """Phase DB des cables decoupes (peut s'executer dans un thread).
+        
+        Retourne un dict {table_name, qualified_table_name, categories}
+        ou None si aucun cable trouve.
+        """
+        _crash_log.step("prepare_distribution_cables_db START", f"sro={sro}")
+        db_params = DatabaseOperations.get_db_connection_params()
+        if not db_params:
+            raise RuntimeError("Parametres DB non disponibles")
+        
+        _crash_log.step("prepare_distribution_cables_db", "connecting")
+        conn = psycopg2.connect(
+            host=db_params["host"],
+            port=db_params["port"],
+            database=db_params["database"],
+            user=db_params["user"],
+            password=db_params["password"]
+        )
+        _crash_log.step("prepare_distribution_cables_db", "connected")
         try:
-            print(f"Chargement des câbles découpés pour la distribution, SRO: {sro}")
-            start_time = time.time()
-            
-            db_params = DatabaseOperations.get_db_connection_params()
-            if not db_params:
-                print("Erreur: Paramètres DB non disponibles")
-                return []
-            
-            conn = psycopg2.connect(
-                host=db_params["host"],
-                port=db_params["port"],
-                database=db_params["database"],
-                user=db_params["user"],
-                password=db_params["password"]
-            )
-            
             conn.set_session(autocommit=False)
             cursor = conn.cursor()
-            print(f"Vérification de la présence de câbles découpés pour le SRO '{sro}'...")
-            cursor.execute("SELECT COUNT(*) FROM rip_avg_nge.fddcpi2(%s) WHERE cab_type = 'CDI'", (sro,))
+            
+            if worker and worker.is_cancelled:
+                return None
+            if worker:
+                worker.progress_value = 20
+            
+            _crash_log.step("prepare_distribution_cables_db", "counting cables")
+            cursor.execute(
+                "SELECT COUNT(*) FROM rip_avg_nge.fddcpi2(%s) WHERE cab_type = 'CDI'",
+                (sro,)
+            )
             count_cables = cursor.fetchone()[0]
-            
+            _crash_log.step("prepare_distribution_cables_db", f"count={count_cables}")
             if count_cables == 0:
-                print(f" Aucun câble découpé trouvé pour le SRO '{sro}'")
-                return []
+                print(f"Aucun cable decoupe pour SRO '{sro}'")
+                return None
             
-            print(f"{count_cables} segments de câbles découpés trouvés pour le SRO '{sro}'")
+            print(f"{count_cables} segments cables decoupes pour SRO '{sro}'")
+            if worker and worker.is_cancelled:
+                return None
+            if worker:
+                worker.progress_value = 40
+            
             sro_safe = re.sub(r'[^a-zA-Z0-9]', '_', sro)
             today = datetime.now().strftime("%Y%m%d")
             unique_id = uuid.uuid4().hex[:6]
-            permanent_table_name = f"cables_decoupes_{sro_safe}_{today}_{unique_id}"
-            if len(permanent_table_name) > 50:
+            table_name = f"cables_decoupes_{sro_safe}_{today}_{unique_id}"
+            if len(table_name) > 50:
                 sro_id = re.sub(r'[^a-zA-Z0-9]', '_', sro.split("/")[-1])
-                permanent_table_name = f"cables_decoupes_{sro_id}_{today}_{unique_id}"
+                table_name = f"cables_decoupes_{sro_id}_{today}_{unique_id}"
             
-            qualified_table_name = f"temporaire.{permanent_table_name}"
+            qualified = f"temporaire.{table_name}"
             
-            print(f"Création de la table permanente '{qualified_table_name}'...")
             cursor.execute(
                 sql.SQL("DROP TABLE IF EXISTS {}").format(
-                    sql.Identifier('temporaire', permanent_table_name)
+                    sql.Identifier('temporaire', table_name)
                 )
             )
             cursor.execute(
@@ -474,97 +513,154 @@ class LayerManager:
                     NOW() AS date_creation
                 FROM rip_avg_nge.fddcpi2(%s) c
                 WHERE cab_type = 'CDI' AND "DCE" = 'O' AND affectation != '3'
-                """).format(sql.Identifier('temporaire', permanent_table_name)),
+                """).format(sql.Identifier('temporaire', table_name)),
                 (sro, sro)
             )
-            idx_posemode = sql.Identifier(f"idx_{permanent_table_name}_posemode")
-            idx_gid = sql.Identifier(f"idx_{permanent_table_name}_gid_dc2")
-            tbl = sql.Identifier('temporaire', permanent_table_name)
-            cursor.execute(sql.SQL("CREATE INDEX {} ON {} (posemode, normalized_capa)").format(idx_posemode, tbl))
+            
+            if worker and worker.is_cancelled:
+                conn.rollback()
+                return None
+            if worker:
+                worker.progress_value = 70
+            
+            tbl = sql.Identifier('temporaire', table_name)
+            idx_pm = sql.Identifier(f"idx_{table_name}_posemode")
+            idx_gid = sql.Identifier(f"idx_{table_name}_gid_dc2")
+            cursor.execute(sql.SQL("CREATE INDEX {} ON {} (posemode, normalized_capa)").format(idx_pm, tbl))
             cursor.execute(sql.SQL("CREATE INDEX {} ON {} (gid_dc2)").format(idx_gid, tbl))
             cursor.execute(sql.SQL("ANALYZE {}").format(tbl))
+            comment_text = f"DQE cables decoupes - SRO: {sro} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            cursor.execute(
+                sql.SQL("COMMENT ON TABLE {} IS %s").format(tbl),
+                (comment_text,)
+            )
             conn.commit()
+            _crash_log.step("prepare_distribution_cables_db", f"table created: {qualified}")
             
-            LayerManager._temp_tables_created.append(permanent_table_name)
-            print(f"Table permanente '{qualified_table_name}' créée avec succès!")
+            LayerManager._temp_tables_created.append(table_name)
+            
+            if worker:
+                worker.progress_value = 80
+            
             cursor.execute(sql.SQL("""
-                SELECT 
-                    posemode,
-                    normalized_capa,
-                    COUNT(*) as count
+                SELECT posemode, normalized_capa, COUNT(*) as count
                 FROM {}
                 GROUP BY posemode, normalized_capa
                 ORDER BY posemode, normalized_capa
             """).format(tbl))
-            
             categories = cursor.fetchall()
-            print(f"Trouvé {len(categories)} catégories de câbles découpés")
-            
-            created_layers = []
-            uri = LayerManager.get_db_connection_string()
-            if not uri:
-                print("Erreur: Impossible de récupérer l'URI de connexion")
-                return []
-            
-            # Sous-groupe pour organiser les câbles découpés
-            cables_group = None
-            if layer_group:
-                cables_group = layer_group.addGroup("Câbles découpés")
-            
-            for idx, (posemode, capa, count) in enumerate(categories):
-                if count == 0:
-                    continue
-                if posemode == 0:
-                    layer_name = f"Câble de {capa} FO en conduite"
-                elif posemode == 1:
-                    layer_name = f"Câble optique de {capa} FO en aérien"
-                elif posemode == 2:
-                    layer_name = f"Câble optique de {capa} FO en façade"
-                else:
-                    layer_name = f"Câble de {capa} FO (mode pose {posemode})"
-                safe_posemode = int(posemode)
-                safe_capa = int(capa)
-                sql_query = f"""
-                    SELECT * 
-                    FROM {qualified_table_name}
-                    WHERE posemode = {safe_posemode} AND normalized_capa = {safe_capa}
-                """
-                uri_copy = QgsDataSourceUri(uri.uri())
-                uri_copy.setDataSource("", f"({sql_query})", "geom", "", "gid_dc2")
-                
-                layer = QgsVectorLayer(uri_copy.uri(False), layer_name, "postgres")
-                
-                if layer.isValid():
-                    QgsProject.instance().addMapLayer(layer, False)
-                    if cables_group:
-                        cables_group.addLayer(layer)
-                    elif layer_group:
-                        layer_group.addLayer(layer)
-                    if layers_loaded is not None:
-                        layers_loaded.append(layer)
-                    created_layers.append(layer)
-                    print(f"Couche créée: '{layer_name}' ({layer.featureCount()} entités)")
-                else:
-                    print(f" Échec du chargement de la couche {layer_name}")
             
             conn.close()
+            _crash_log.step("prepare_distribution_cables_db END", f"{len(categories)} categories")
+            print(f"Preparation DB terminee: {len(categories)} categories")
+            return {
+                'table_name': table_name,
+                'qualified_table_name': qualified,
+                'categories': categories
+            }
+        except Exception:
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+            raise
+    
+    @staticmethod
+    def create_distribution_layers(db_result, layer_group=None, layers_loaded=None, cancel_check=None):
+        """Phase UI des cables decoupes (DOIT s'executer dans le main thread).
+        
+        Cree les couches QGIS a partir du resultat de prepare_distribution_cables_db.
+        Appelle processEvents() entre chaque couche pour garder l'UI responsive.
+        
+        cancel_check : callable retournant True si annulation demandee.
+        """
+        from qgis.core import QgsProject, QgsVectorLayer
+        _crash_log.step("create_distribution_layers START")
+        _t0 = time.monotonic()
+        
+        if not db_result:
+            return []
+        
+        qualified = db_result['qualified_table_name']
+        categories = db_result['categories']
+        _crash_log.step("create_distribution_layers", f"qualified={qualified} categories={len(categories)}")
+        
+        uri = LayerManager.get_db_connection_string()
+        if not uri:
+            print("Erreur: URI de connexion non disponible")
+            return []
+        
+        cables_group = None
+        if layer_group:
+            cables_group = layer_group.addGroup("Cables decoupes")
+        
+        created_layers = []
+        from qgis.core import QgsApplication
+        
+        for idx, (posemode, capa, count) in enumerate(categories):
+            if cancel_check and cancel_check():
+                _crash_log.step("create_distribution_layers", f"cancelled at {idx}/{len(categories)}")
+                break
+            if count == 0:
+                continue
+            _crash_log.step("create_distribution_layers", f"layer {idx+1}/{len(categories)} posemode={posemode} capa={capa}")
             
-            end_time = time.time()
-            print(f"Temps total de chargement des câbles découpés: {end_time - start_time:.2f} secondes")
-            print(f"{len(created_layers)}/{len(categories)} couches SRO créées avec succès")
+            if posemode == 0:
+                layer_name = f"Cable de {capa} FO en conduite"
+            elif posemode == 1:
+                layer_name = f"Cable optique de {capa} FO en aerien"
+            elif posemode == 2:
+                layer_name = f"Cable optique de {capa} FO en facade"
+            else:
+                layer_name = f"Cable de {capa} FO (mode pose {posemode})"
             
-            return created_layers
-                
+            safe_posemode = int(posemode)
+            safe_capa = int(capa)
+            sql_query = f"""
+                SELECT * FROM {qualified}
+                WHERE posemode = {safe_posemode} AND normalized_capa = {safe_capa}
+            """
+            uri_copy = QgsDataSourceUri(uri.uri())
+            uri_copy.setDataSource("", f"({sql_query})", "geom", "", "gid_dc2")
+            
+            layer = QgsVectorLayer(uri_copy.uri(False), layer_name, "postgres")
+            if layer.isValid():
+                QgsProject.instance().addMapLayer(layer, False)
+                if cables_group:
+                    cables_group.addLayer(layer)
+                elif layer_group:
+                    layer_group.addLayer(layer)
+                if layers_loaded is not None:
+                    layers_loaded.append(layer)
+                created_layers.append(layer)
+            else:
+                print(f"Echec couche: {layer_name}")
+            
+            QgsApplication.processEvents()
+        
+        elapsed_ms = int((time.monotonic() - _t0) * 1000)
+        _crash_log.step("create_distribution_layers END", f"{len(created_layers)}/{len(categories)} couches elapsed_ms={elapsed_ms}")
+        print(f"{len(created_layers)}/{len(categories)} couches cables creees")
+        return created_layers
+    
+    @staticmethod
+    def load_distribution_cables(sro, layer_group=None, layers_loaded=None):
+        """Chargement synchrone des cables decoupes (wrapper retro-compatible)."""
+        try:
+            start_time = time.time()
+            db_result = LayerManager.prepare_distribution_cables_db(sro)
+            if not db_result:
+                return []
+            layers = LayerManager.create_distribution_layers(
+                db_result, layer_group, layers_loaded
+            )
+            print(f"Temps total cables decoupes: {time.time() - start_time:.2f}s")
+            return layers
         except Exception as e:
             import traceback
-            print(f"ERREUR dans le chargement des câbles découpés: {str(e)}")
+            print(f"ERREUR cables decoupes: {e}")
             print(traceback.format_exc())
-            try:
-                if 'conn' in locals():
-                    conn.rollback()
-                    conn.close()
-            except:
-                pass
             return []
 
     @staticmethod

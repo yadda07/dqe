@@ -6,8 +6,8 @@ Shared logic for DQE PRO, EXE, and PGC tabs.
 
 import time
 
-from PyQt5.QtCore import QThread, QTimer
-from PyQt5.QtWidgets import QWidget, QApplication
+from .compat import QThread, QTimer, QWidget, QApplication
+from .dqe_utils import _crash_log
 
 
 class BaseDQETab(QWidget):
@@ -34,6 +34,41 @@ class BaseDQETab(QWidget):
         """Signale l'annulation pendant le post-traitement (chargement couches)"""
         self._is_cancelled = True
 
+    def _cleanup_orphan_layers(self):
+        """Supprime les couches QGIS chargees pendant l'operation en cours.
+
+        Evite la boucle infinie de requetes QGIS sur des tables temporaires
+        supprimees apres annulation.
+        """
+        from qgis.core import QgsProject
+        from .dqe_utils import _logger
+
+        _crash_log.step("cleanup_orphan_layers START", f"count={len(self.layers_loaded)}")
+        project = QgsProject.instance()
+        removed = 0
+        for layer in list(self.layers_loaded):
+            try:
+                if layer is not None and project.mapLayer(layer.id()):
+                    _crash_log.step("cleanup_orphan_layers", f"removing layer {layer.id()}")
+                    project.removeMapLayer(layer.id())
+                    removed += 1
+            except RuntimeError:
+                pass
+        self.layers_loaded.clear()
+
+        if self.layer_group is not None:
+            try:
+                _crash_log.step("cleanup_orphan_layers", "removing layer_group")
+                root = project.layerTreeRoot()
+                root.removeChildNode(self.layer_group)
+            except RuntimeError:
+                pass
+            self.layer_group = None
+
+        _crash_log.step("cleanup_orphan_layers END", f"removed={removed}")
+        if removed and _logger:
+            _logger.info(f"Nettoyage annulation: {removed} couches orphelines supprimees")
+
     # ------------------------------------------------------------------
     # Thread lifecycle
     # ------------------------------------------------------------------
@@ -44,15 +79,22 @@ class BaseDQETab(QWidget):
             self.progress_timer.deleteLater()
             self.progress_timer = None
         if hasattr(self, 'thread') and self.thread:
-            if hasattr(self, 'worker') and self.worker:
-                self.worker.cancel()
-            self.thread.quit()
-            if not self.thread.wait(10000):
-                from .dqe_utils import _logger
-                if _logger:
-                    _logger.warning(f"Thread DQE {self.TAB_LABEL} ne repond pas apres 10s — abandon")
+            try:
+                if hasattr(self, 'worker') and self.worker:
+                    self.worker.cancel()
+                self.thread.quit()
+                if not self.thread.wait(10000):
+                    from .dqe_utils import _logger
+                    if _logger:
+                        _logger.warning(f"Thread DQE {self.TAB_LABEL} ne repond pas apres 10s")
+            except RuntimeError:
+                pass  # Objet C++ deja supprime par deleteLater()
+            self.thread = None
         if hasattr(self, 'worker') and self.worker:
-            self.worker.deleteLater()
+            try:
+                self.worker.deleteLater()
+            except RuntimeError:
+                pass
             self.worker = None
 
     # ------------------------------------------------------------------
@@ -77,6 +119,12 @@ class BaseDQETab(QWidget):
         operation_label : str, optional
             Label shown in the progress bar. Defaults to ``TAB_LABEL``.
         """
+        _crash_log.step(f"setup_worker_thread START", f"tab={self.TAB_LABEL} layers_loaded={len(self.layers_loaded)}")
+        if self.layers_loaded:
+            _crash_log.step("setup_worker_thread", "pre-cleanup orphan layers")
+            self._cleanup_orphan_layers()
+            _crash_log.step("setup_worker_thread", "post-cleanup orphan layers")
+
         label = operation_label or f"DQE {self.TAB_LABEL}"
         self.progress_widget.start_operation(label)
         self.worker = worker
@@ -88,7 +136,7 @@ class BaseDQETab(QWidget):
         tab_label = self.TAB_LABEL
 
         def update_smooth_progress():
-            if hasattr(self, 'worker') and self.worker.is_running:
+            if hasattr(self, 'worker') and self.worker is not None and self.worker.is_running:
                 target_progress = getattr(self.worker, 'progress_value', 10)
 
                 if self.current_progress < target_progress:
@@ -112,6 +160,7 @@ class BaseDQETab(QWidget):
 
         self.progress_timer.timeout.connect(update_smooth_progress)
         self.progress_timer.start(100)
+        _crash_log.step("setup_worker_thread", "moveToThread")
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(on_finished_callback)
         self._is_cancelled = False
@@ -119,7 +168,9 @@ class BaseDQETab(QWidget):
         self.progress_widget.progress_cancelled.connect(self._cancel_post_processing)
         self.thread.started.connect(self.worker.run)
         self.thread.finished.connect(self.thread.deleteLater)
+        _crash_log.step("setup_worker_thread", "thread.start()")
         self.thread.start()
+        _crash_log.step("setup_worker_thread END")
 
     # ------------------------------------------------------------------
     # Shared layer loading
@@ -144,6 +195,7 @@ class BaseDQETab(QWidget):
         from .layer_manager import LayerManager
         from .dqe_utils import _logger
 
+        _t0 = time.monotonic()
         created_layers = []
         for category_name, tasks in categories.items():
             if not tasks:
@@ -174,8 +226,6 @@ class BaseDQETab(QWidget):
                         category_group.addLayer(layer)
                         created_layers.append(layer)
                         self.layers_loaded.append(layer)
-                        if _logger:
-                            _logger.debug(f"Couche creee - {layer.featureCount()} entites")
                         if iface:
                             iface.mainWindow().statusBar().showMessage(f"Charge {len(created_layers)} couches")
                     else:
@@ -186,8 +236,10 @@ class BaseDQETab(QWidget):
                     if _logger:
                         _logger.error(f"Erreur chargement {task_data['layer_name']}: {str(e)}")
 
+        elapsed_ms = int((time.monotonic() - _t0) * 1000)
+        _crash_log.step("_load_categories_to_layers END", f"n_items={len(created_layers)} elapsed_ms={elapsed_ms}")
         if _logger:
-            _logger.info(f"Couches standard creees: {len(created_layers)}")
+            _logger.info(f"Couches standard creees: {len(created_layers)} elapsed_ms={elapsed_ms}")
         return created_layers
 
     # ------------------------------------------------------------------

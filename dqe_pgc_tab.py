@@ -10,13 +10,13 @@ import time
 import uuid
 from typing import List, Dict, Any
 
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QPushButton, QApplication, QMessageBox
+from .compat import (
+    QTimer, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QPushButton, QApplication, QMessageBox,
+    MSGBOX_ACCEPTROLE, MSGBOX_REJECTROLE, QGIS_SUCCESS
 )
 from .base_tab import BaseDQETab
-from qgis.core import QgsProject, Qgis
+from qgis.core import QgsProject
 from qgis.utils import iface
 from .ui_components import SROComboBox, TronconComboBox, ProgressWidget
 from .layer_manager import LayerManager
@@ -24,6 +24,7 @@ from .database_operations import DatabaseOperations
 from .excel_manager import ExcelManager
 from .workers import DQEWorker
 from .dqe_utils import _db_manager, _logger, _validator, QtCompatibility
+from .telemetry import send_telemetry
 
 
 class DQEPGCTab(BaseDQETab):
@@ -136,12 +137,16 @@ class DQEPGCTab(BaseDQETab):
             print(f"ATTENTION: Erreur nettoyage couches: {e}")
     
     def validate_sro_async(self, sro: str):
+        """Validation format uniquement sur frappe (pas de DB).
+
+        Le chargement des troncons (query DB) n'est déclenché qu'une
+        fois le format validé, pas à chaque frappe.
+        """
         if sro != self.sro_input.lineEdit().text().strip():
             return
         
         if _validator:
-            is_valid, message = _validator.validate_sro_exists(sro)
-            if is_valid:
+            if _validator._validate_sro_format(sro):
                 self.troncon_combo.set_sro(sro)
                 self.troncon_combo.setEnabled(True)
                 self.execute_button.setEnabled(True)
@@ -154,7 +159,15 @@ class DQEPGCTab(BaseDQETab):
         if not sro or not troncon:
             print("ERREUR: Veuillez remplir le SRO et sélectionner un tronçon")
             return
+        
+        if _validator:
+            is_valid, message = _validator.validate_sro_exists(sro)
+            if not is_valid:
+                QMessageBox.warning(self, "SRO invalide", f"Le SRO saisi n'est pas valide:\n{message}")
+                return
+        
         self.execute_button.setEnabled(False)
+        self._exec_start = time.monotonic()
         
         try:
             worker = DQEWorker("PGC", sro, None, troncon)
@@ -191,6 +204,13 @@ class DQEPGCTab(BaseDQETab):
                 
                 if self._is_cancelled:
                     self.progress_widget.complete_operation(False, "Opération annulée")
+                    send_telemetry(
+                        action="execution", mode="PGC",
+                        sro=sro, troncon=troncon_safe,
+                        projet_code="GC",
+                        verdict="cancelled", cancelled=True,
+                        elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                    )
                     return
                 
                 print(f"\n=== CHOIX MODE CALCUL REDEVANCE ===")
@@ -223,11 +243,12 @@ class DQEPGCTab(BaseDQETab):
                 )
                 msgBox.setText(main_text)
                 QtCompatibility.set_rich_text_format(msgBox)
-                gestionnaire_btn = msgBox.addButton("Mode Gestionnaire", QMessageBox.AcceptRole)
-                direct_btn = msgBox.addButton("Mode Direct", QMessageBox.RejectRole)
+                gestionnaire_btn = msgBox.addButton("Mode Gestionnaire", MSGBOX_ACCEPTROLE)
+                direct_btn = msgBox.addButton("Mode Direct", MSGBOX_REJECTROLE)
                 msgBox.setDefaultButton(gestionnaire_btn)
                 
-                result = msgBox.exec_()
+                from .compat import exec_dialog
+                result = exec_dialog(msgBox)
                 clicked_button = msgBox.clickedButton()
                 if clicked_button == gestionnaire_btn:
                     self.redevance_mode_gestionnaire = True
@@ -283,15 +304,35 @@ class DQEPGCTab(BaseDQETab):
                 
                 final_message = f"DQE PGC terminé: {len(created_layers)} couches créées"
                 self.progress_widget.complete_operation(True, final_message)
+                redevance_mode_str = "gestionnaire" if getattr(self, 'redevance_mode_gestionnaire', False) else "direct"
+                send_telemetry(
+                    action="execution", mode="PGC",
+                    sro=sro, troncon=troncon_safe,
+                    projet_code="GC",
+                    verdict="success",
+                    n_results=len(results) if results else 0,
+                    n_layers=len(created_layers) if created_layers else 0,
+                    redevance_mode=redevance_mode_str,
+                    excel_generated=bool(excel_path),
+                    elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                )
                 
                 if iface:
                     iface.messageBar().pushMessage(
                         "DQE PGC", final_message,
-                        level=Qgis.Success, duration=5
+                        level=QGIS_SUCCESS, duration=5
                     )
             else:
                 self.progress_widget.complete_operation(False, message)
                 print(f"Erreur: {message}")
+                send_telemetry(
+                    action="execution", mode="PGC",
+                    sro=self.sro_input.lineEdit().text().strip(),
+                    troncon=self.troncon_combo.currentText().strip().replace('/', '_') if hasattr(self, 'troncon_combo') else "",
+                    projet_code="GC",
+                    verdict="failure", error_msg=message,
+                    elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+                )
                 
         except Exception as e:
             error_msg = f"Erreur post-traitement DQE PGC: {str(e)}"
@@ -299,6 +340,14 @@ class DQEPGCTab(BaseDQETab):
             import traceback
             print(traceback.format_exc())
             self.progress_widget.complete_operation(False, error_msg)
+            send_telemetry(
+                action="execution", mode="PGC",
+                sro=self.sro_input.lineEdit().text().strip(),
+                troncon=self.troncon_combo.currentText().strip().replace('/', '_') if hasattr(self, 'troncon_combo') else "",
+                projet_code="GC",
+                verdict="failure", error_msg=error_msg,
+                elapsed_ms=int((time.monotonic() - getattr(self, '_exec_start', time.monotonic())) * 1000),
+            )
         finally:
             self._cleanup_thread()
             self.execute_button.setEnabled(True)
@@ -307,6 +356,7 @@ class DQEPGCTab(BaseDQETab):
         """Valide et sauvegarde le DQE PGC dans la base de données
         Structure: 1 ligne dqe_result + couches avec geometries
         """
+        validate_start = time.monotonic()
         try:
             sro = self.sro_input.currentText().strip()
             if not sro:
@@ -402,7 +452,15 @@ class DQEPGCTab(BaseDQETab):
             
             if _logger:
                 _logger.info(f"DQE PGC validé - SRO: {sro}, Type: {projet_code}, Couches: {layers_count}, DQE: {len(dqe_data)}")
-                
+            send_telemetry(
+                action="validation", mode="PGC",
+                sro=sro, troncon=troncon, projet_code=projet_code,
+                verdict="success",
+                n_dqe_data=len(dqe_data), n_layers_saved=layers_count,
+                redevance_mode="gestionnaire" if getattr(self, 'redevance_mode_gestionnaire', False) else "direct",
+                elapsed_ms=int((time.monotonic() - validate_start) * 1000),
+            )
+            
         except Exception as e:
             error_msg = f"Erreur validation DQE PGC: {str(e)}"
             print(f"{error_msg}")
@@ -411,6 +469,14 @@ class DQEPGCTab(BaseDQETab):
             if _logger:
                 _logger.error(error_msg, exception=e)
             QMessageBox.critical(self, "Erreur", f"Erreur validation DQE PGC: {str(e)}")
+            send_telemetry(
+                action="validation", mode="PGC",
+                sro=self.sro_input.currentText().strip() if hasattr(self, 'sro_input') else "",
+                troncon=self.troncon_combo.currentText().strip() if hasattr(self, 'troncon_combo') else "",
+                projet_code="GC",
+                verdict="failure", error_msg=str(e),
+                elapsed_ms=int((time.monotonic() - validate_start) * 1000),
+            )
     
     def regenerate_excel(self):
         """Régénère le fichier Excel avec les données de redevance selon le mode sélectionné"""
@@ -453,7 +519,6 @@ class DQEPGCTab(BaseDQETab):
             print(f" Erreur lors de la régénération Excel: {str(e)}")
             import traceback
             traceback.print_exc()
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self, 
                 "Erreur régénération Excel", 
@@ -582,7 +647,6 @@ class DQEPGCTab(BaseDQETab):
             print(f"Erreur lors de la génération automatique Excel en mode direct: {str(e)}")
             import traceback
             traceback.print_exc()
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self, 
                 "Erreur génération Excel", 
@@ -700,7 +764,7 @@ class DQEPGCTab(BaseDQETab):
                     print(f"Erreur lors de la sauvegarde alternative: {alt_error}")
                     try:
                         workbook.close()
-                    except:
+                    except Exception:
                         pass
                     raise save_error
             

@@ -9,13 +9,12 @@ import os
 import json
 from typing import Optional, Dict, Any
 
-from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
-    QLineEdit, QPushButton, QLabel, QCheckBox, 
-    QMessageBox, QGroupBox, QSpinBox
+from .compat import (
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QLineEdit, QPushButton, QLabel, QCheckBox,
+    QMessageBox, QGroupBox, QSpinBox, Qt, QIcon,
+    LINEEDIT_PASSWORD, QGIS_SUCCESS, MSGBOX_YES, MSGBOX_NO
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
 
 from qgis.core import QgsSettings
 from qgis.utils import iface
@@ -70,7 +69,7 @@ class ConnectionDialog(QDialog):
         conn_layout.addRow("Utilisateur :", self.user_edit)
         
         self.password_edit = QLineEdit()
-        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setEchoMode(LINEEDIT_PASSWORD)
         self.password_edit.setPlaceholderText("Mot de passe")
         conn_layout.addRow("Mot de passe :", self.password_edit)
         
@@ -233,10 +232,10 @@ class ConnectionDialog(QDialog):
                     self, "Connexion existante",
                     f"Une connexion '{conn_name}' existe déjà dans QGIS.\n"
                     "Voulez-vous la remplacer ?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.Yes
+                    MSGBOX_YES | MSGBOX_NO,
+                    MSGBOX_YES
                 )
-                if reply != QMessageBox.Yes:
+                if reply != MSGBOX_YES:
                     return
             settings.beginGroup(f"PostgreSQL/connections/{conn_name}")
             settings.setValue("host", data['host'])
@@ -247,14 +246,14 @@ class ConnectionDialog(QDialog):
             settings.setValue("sslmode", "1")  # Préférer SSL
             settings.setValue("saveUsername", "true")
             settings.setValue("savePassword", "true")
-            settings.setValue("estimatedMetadata", "false")
+            settings.setValue("estimatedMetadata", "true")
             settings.endGroup()
             
             if iface:
                 iface.messageBar().pushMessage(
                     "DQE Plugin", 
                     f"Connexion '{conn_name}' sauvegardée dans QGIS",
-                    level=1, duration=5  # Success
+                    level=QGIS_SUCCESS, duration=5
                 )
             
         except Exception as e:
@@ -283,7 +282,7 @@ class ConnectionDialog(QDialog):
                 iface.messageBar().pushMessage(
                     "DQE Plugin", 
                     "Configuration sauvegardée dans config.json",
-                    level=1, duration=5  # Success
+                    level=QGIS_SUCCESS, duration=5
                 )
             
         except Exception as e:
