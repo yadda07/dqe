@@ -1,11 +1,11 @@
 [general]
 name=DQE Chargeur
 qgisMinimumVersion=3.28.0
-qgisMaximumVersion=3.45.0
+qgisMaximumVersion=4.99
 description=Plugin de génération de DQE (Détail Quantitatif Estimatif) pour le projet de Auvergne Numérique
 long_description=Ce plugin permet la génération automatique de DQE pour le projet de Auvergne Numérique à partir d'un code SRO. Il supporte trois modes : DQE PRO (quantitatifs projet), DQE EXE (quantitatifs exécution avec génie civil), et DQE PGC (attribution gestionnaire avec corrections manuelles). Génération automatique d'Excel avec templates spécialisés et chargement des couches QGIS organisées.
 
-version=3.5.1
+version=4.0.0
 author=DEVTEM NGE
 email=yadda@nge-es.com
 
@@ -20,7 +20,20 @@ repository=
 experimental=False
 deprecated=False
 
-changelog=3.5.1 - Audit securite et qualite code
+changelog=4.0.0 - Montee de version majeure
+    * Version 4.0.0
+    3.6.0 - Compatibilite QGIS 3.44 (Qt5) / QGIS 4.0 (Qt6)
+    * Module compat.py centralisant tous les imports Qt via qgis.PyQt
+    * Zero import direct PyQt5/PyQt6 dans les fichiers du plugin
+    * exec_() remplace par exec_dialog() compatible Qt5/Qt6
+    * QVariant gere via qgis.PyQt avec fallback types Python
+    * Constantes Qgis.MessageLevel dans compat.py (scope Qt5/Qt6)
+    * Detection automatique version Qt/QGIS au demarrage (log console)
+    * Correction bug connexion AUVERGNE (Passe 3 sans test reseau)
+    * connect_timeout augmente de 5s a 10s
+    * Check dependances : qgis.PyQt au lieu de PyQt5
+    * Imports inutilises nettoyes dans dqe_chargeur_dialog.py
+    3.5.1 - Audit securite et qualite code
     * Neutralisation credentials config.json + .gitignore
     * Correction injections SQL (psycopg2.sql.Identifier/Literal)
     * Suppression password expose dans les logs

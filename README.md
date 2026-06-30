@@ -3,7 +3,7 @@
 Génère les DQE (Détail Quantitatif Estimatif) pour Auvergne Numérique.  
 Fait le boulot : requêtes SQL, couches QGIS, exports Excel.
 
-**v3.5.0** | QGIS 3.28+ | NGE
+**v4.0.0** | QGIS 3.28+ | NGE
 
 ## Structure
 

@@ -31,3 +31,8 @@ build/
 
 # Old code
 DQE Chargeurold/
+
+# Google Apps Script (IDs de deployment interne)
+google_apps_script_dqe.gs
+diag_dqe.gs
+dashboard_dqe.gs
