@@ -100,7 +100,7 @@ class DatabaseOperations:
                 cursor.execute("SET statement_timeout TO '90000'")
             
             print(f"Exécution de dqe2('{sro}', '{p_type}')")
-            query = "SELECT * FROM rip_avg_nge.dqe2(%s, %s)"
+            query = "SELECT * FROM ftth.dqe2(%s, %s)"
             cursor.execute(query, (sro, p_type))
             results = cursor.fetchall()
             
@@ -126,7 +126,7 @@ class DatabaseOperations:
             cursor = conn.cursor(cursor_factory=DictCursor)
             
             print(f"Exécution de dqe_exe('{sro}', '{p_type}', '{blocage}')")
-            query = "SELECT * FROM rip_avg_nge.dqe_exe(%s, %s, %s)"
+            query = "SELECT * FROM ftth.dqe_exe(%s, %s, %s)"
             cursor.execute(query, (sro, p_type, blocage))
             results = cursor.fetchall()
             
@@ -153,7 +153,7 @@ class DatabaseOperations:
             print(f"\n=== DÉBUT DQE PGC COMPLET ===")
             print(f"SRO: {sro}, Tronçon: {troncon}")
             print("\nÉTAPE 1: Exécution DQE PGC...")
-            query = "SELECT * FROM rip_avg_nge.dqe_pgc(%s, %s)"
+            query = "SELECT * FROM ftth.dqe_pgc(%s, %s)"
             cursor.execute(query, (sro, troncon))
             raw_results = cursor.fetchall()
             

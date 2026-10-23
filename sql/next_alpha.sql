@@ -39,12 +39,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION dqe.nextval_alpha(text)
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION dqe.nextval_alpha(text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION dqe.nextval_alpha(text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION dqe.nextval_alpha(text) TO yadda;
 

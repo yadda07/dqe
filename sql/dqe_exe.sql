@@ -1,9 +1,9 @@
--- FUNCTION: rip_avg_nge.dqe_exe(text, text, text)
+-- FUNCTION: ftth.dqe_exe(text, text, text)
 -- p_blocage: NULL/'E' (standard TE/DE), 'T' (travaux TT/DT sans blocage), 'B' (blocage TB/DB uniquement)
 
--- DROP FUNCTION IF EXISTS rip_avg_nge.dqe_exe(text, text, text);
+-- DROP FUNCTION IF EXISTS ftth.dqe_exe(text, text, text);
 
-CREATE OR REPLACE FUNCTION rip_avg_nge.dqe_exe(
+CREATE OR REPLACE FUNCTION ftth.dqe_exe(
 	p_sro text,
 	p_type text DEFAULT NULL::text,
 	p_blocage text DEFAULT NULL::text)
@@ -20,7 +20,7 @@ BEGIN
     -- Récupération des IDs du GC à réaliser depuis la ligne 4 du DQE
     WITH dqe_numbered AS (
         SELECT d.ids as gc_ids, ROW_NUMBER() OVER (ORDER BY 1) as rn
-        FROM rip_avg_nge.dqe2(p_sro, p_type, p_blocage) d
+        FROM ftth.dqe2(p_sro, p_type, p_blocage) d
     )
     SELECT dqe_numbered.gc_ids INTO v_gc_ids
     FROM dqe_numbered 
@@ -42,7 +42,7 @@ BEGIN
                d."Unité" AS uni_pro, 
                d."Quantité" AS qte_pro, 
                d.ids AS ids_pro
-        FROM rip_avg_nge.dqe2(p_sro, p_type, p_blocage) d
+        FROM ftth.dqe2(p_sro, p_type, p_blocage) d
     ),
     
     -- =========================================================================
@@ -53,12 +53,12 @@ BEGIN
             t.gid,
             t.geom, 
             ST_Length(t.geom) as longueur
-        FROM rip_avg_nge.t_cheminement t
+        FROM ftth.t_cheminement t
         WHERE v_gc_ids != '' AND t.gid::text = ANY(string_to_array(v_gc_ids, ','))
     ),
     
     -- =========================================================================
-    -- DONNÉES EXE - CHEMINEMENTS (blocage_ran récupéré depuis rip_avg_nge.t_cheminement)
+    -- DONNÉES EXE - CHEMINEMENTS (blocage_ran récupéré depuis ftth.t_cheminement)
     -- =========================================================================
     cheminement_data AS (
         SELECT
@@ -82,10 +82,10 @@ BEGIN
         INNER JOIN gc_a_realiser gar ON 
             st_dwithin(exe.geom, gar.geom, 0.2)
             AND ((st_length(st_intersection(st_buffer(gar.geom, 0.2), exe.geom)) / NULLIF(st_length(exe.geom), 0)) > 0.80 OR st_within(exe.geom, gar.geom))
-        -- Jointure spatiale pour récupérer blocage_ran depuis rip_avg_nge (95% overlap)
+        -- Jointure spatiale pour récupérer blocage_ran depuis ftth (95% overlap)
         LEFT JOIN LATERAL (
             SELECT pro.blocage_ran
-            FROM rip_avg_nge.t_cheminement pro
+            FROM ftth.t_cheminement pro
             WHERE st_dwithin(exe.geom, pro.geom, 0.5)
               AND (st_length(st_intersection(exe.geom, st_buffer(pro.geom, 0.2))) / NULLIF(st_length(exe.geom), 0)) >= 0.95
             LIMIT 1
@@ -94,7 +94,7 @@ BEGIN
         AND exe.cm_avct = 'C' 
         AND exe.cm_typ_imp = '7'
         AND exe.type_coup IS NOT NULL
-        -- Filtre blocage_ran (depuis rip_avg_nge)
+        -- Filtre blocage_ran (depuis ftth)
         AND (p_blocage IS NULL OR p_blocage = 'E' 
              OR (p_blocage = 'T' AND (blocage_src.blocage_ran = false OR blocage_src.blocage_ran IS NULL))
              OR (p_blocage = 'B' AND blocage_src.blocage_ran = true))
@@ -125,7 +125,7 @@ BEGIN
     ),
     
     -- =========================================================================
-    -- DONNÉES EXE - CHAMBRES (blocage_ran récupéré depuis rip_avg_nge.infra_pt_chb)
+    -- DONNÉES EXE - CHAMBRES (blocage_ran récupéré depuis ftth.infra_pt_chb)
     -- =========================================================================
     chambre_distinct AS (
         SELECT 
@@ -133,15 +133,15 @@ BEGIN
             c.inf_mat
         FROM gc_exe.infra_pt_chb c
         INNER JOIN gc_a_realiser gar ON ST_DWithin(c.geom, gar.geom, 0.1)
-        -- Jointure spatiale pour récupérer blocage_ran depuis rip_avg_nge
+        -- Jointure spatiale pour récupérer blocage_ran depuis ftth
         LEFT JOIN LATERAL (
             SELECT pro.blocage_ran
-            FROM rip_avg_nge.infra_pt_chb pro
+            FROM ftth.infra_pt_chb pro
             WHERE ST_DWithin(c.geom, pro.geom, 0.1)
             LIMIT 1
         ) blocage_src ON true
         WHERE c.inf_type = 'CHB-AC'
-        -- Filtre blocage_ran (depuis rip_avg_nge)
+        -- Filtre blocage_ran (depuis ftth)
         AND (p_blocage IS NULL OR p_blocage = 'E' 
              OR (p_blocage = 'T' AND (blocage_src.blocage_ran = false OR blocage_src.blocage_ran IS NULL))
              OR (p_blocage = 'B' AND blocage_src.blocage_ran = true))
@@ -162,14 +162,14 @@ BEGIN
     poteaux_distribution_data AS (
         SELECT
             CASE 
-                WHEN inf_type = 'POT-AC' THEN 'pose poteau RAUV'
+                WHEN inf_type = 'POT-AC' THEN 'pose poteau reseau'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RENFORCER' THEN 'FT à renforcer'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RECALER' THEN 'FT à recaler'
                 WHEN inf_type = 'POT-FT' AND etat = 'A REMPLACER' THEN 'FT à remplacer'
             END AS designation_poteau,
             COUNT(*)::numeric AS quantity,
             string_agg(p.gid::text, ',') AS gids_pot_dist
-        FROM rip_avg_nge.infra_pt_pot p
+        FROM ftth.infra_pt_pot p
         WHERE p.sro = p_sro
         AND (
             (p.inf_type = 'POT-AC') OR
@@ -181,7 +181,7 @@ BEGIN
              OR (p_blocage = 'B' AND p.blocage_ran = true))
         GROUP BY 
             CASE 
-                WHEN inf_type = 'POT-AC' THEN 'pose poteau RAUV'
+                WHEN inf_type = 'POT-AC' THEN 'pose poteau reseau'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RENFORCER' THEN 'FT à renforcer'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RECALER' THEN 'FT à recaler'
                 WHEN inf_type = 'POT-FT' AND etat = 'A REMPLACER' THEN 'FT à remplacer'
@@ -189,7 +189,7 @@ BEGIN
     ),
     
     -- =========================================================================
-    -- DONNÉES EXE - PVC (blocage_ran récupéré depuis rip_avg_nge.t_cheminement)
+    -- DONNÉES EXE - PVC (blocage_ran récupéré depuis ftth.t_cheminement)
     -- =========================================================================
     pvc_data AS (
         SELECT
@@ -204,10 +204,10 @@ BEGIN
         INNER JOIN gc_a_realiser gar ON 
             st_dwithin(exe.geom, gar.geom, 0.2)
             AND ((st_length(st_intersection(st_buffer(gar.geom, 0.2), exe.geom)) / NULLIF(st_length(exe.geom), 0)) > 0.80 OR st_within(exe.geom, gar.geom))
-        -- Jointure spatiale pour récupérer blocage_ran depuis rip_avg_nge (95% overlap)
+        -- Jointure spatiale pour récupérer blocage_ran depuis ftth (95% overlap)
         LEFT JOIN LATERAL (
             SELECT pro.blocage_ran
-            FROM rip_avg_nge.t_cheminement pro
+            FROM ftth.t_cheminement pro
             WHERE st_dwithin(exe.geom, pro.geom, 0.5)
               AND (st_length(st_intersection(exe.geom, st_buffer(pro.geom, 0.2))) / NULLIF(st_length(exe.geom), 0)) >= 0.95
             LIMIT 1
@@ -215,7 +215,7 @@ BEGIN
         WHERE exe.sro = p_sro 
         AND exe.cm_compo ILIKE '%pvc%' 
         AND (exe.cm_compo ILIKE '%45' OR exe.cm_compo ILIKE '%60' OR exe.cm_compo ILIKE '%80')
-        -- Filtre blocage_ran (depuis rip_avg_nge)
+        -- Filtre blocage_ran (depuis ftth)
         AND (p_blocage IS NULL OR p_blocage = 'E' 
              OR (p_blocage = 'T' AND (blocage_src.blocage_ran = false OR blocage_src.blocage_ran IS NULL))
              OR (p_blocage = 'B' AND blocage_src.blocage_ran = true))
@@ -229,7 +229,7 @@ BEGIN
     ),
     
     -- =========================================================================
-    -- DONNÉES EXE - PEHD (blocage_ran récupéré depuis rip_avg_nge.t_cheminement)
+    -- DONNÉES EXE - PEHD (blocage_ran récupéré depuis ftth.t_cheminement)
     -- =========================================================================
     pehd_data AS (
         SELECT
@@ -240,17 +240,17 @@ BEGIN
         INNER JOIN gc_a_realiser gar ON 
             st_dwithin(gar.geom, exe.geom, 0.2)
             AND ((st_length(st_intersection(st_buffer(gar.geom, 0.2), exe.geom)) / NULLIF(st_length(exe.geom), 0)) > 0.80 OR st_within(exe.geom, gar.geom))
-        -- Jointure spatiale pour récupérer blocage_ran depuis rip_avg_nge (95% overlap)
+        -- Jointure spatiale pour récupérer blocage_ran depuis ftth (95% overlap)
         LEFT JOIN LATERAL (
             SELECT pro.blocage_ran
-            FROM rip_avg_nge.t_cheminement pro
+            FROM ftth.t_cheminement pro
             WHERE st_dwithin(exe.geom, pro.geom, 0.5)
               AND (st_length(st_intersection(exe.geom, st_buffer(pro.geom, 0.2))) / NULLIF(st_length(exe.geom), 0)) >= 0.95
             LIMIT 1
         ) blocage_src ON true
         WHERE exe.sro = p_sro 
         AND exe.cm_compo ILIKE '%PEHD%'
-        -- Filtre blocage_ran (depuis rip_avg_nge)
+        -- Filtre blocage_ran (depuis ftth)
         AND (p_blocage IS NULL OR p_blocage = 'E' 
              OR (p_blocage = 'T' AND (blocage_src.blocage_ran = false OR blocage_src.blocage_ran IS NULL))
              OR (p_blocage = 'B' AND blocage_src.blocage_ran = true))
@@ -433,14 +433,14 @@ BEGIN
         UNION ALL
         
         -- BLOC 9: POTEAUX (lignes 132-135) - UNIQUEMENT POUR DISTRIBUTION
-        SELECT 132 AS ordre, 'pose poteau RAUV', 'U',
+        SELECT 132 AS ordre, 'pose poteau reseau', 'U',
             CASE WHEN p_type IS NULL OR p_type = 'D' THEN
                 COALESCE((SELECT quantity FROM poteaux_distribution_data 
-                         WHERE designation_poteau = 'pose poteau RAUV'), 0)
+                         WHERE designation_poteau = 'pose poteau reseau'), 0)
             ELSE 0 END,
             CASE WHEN p_type IS NULL OR p_type = 'D' THEN
                 (SELECT gids_pot_dist FROM poteaux_distribution_data 
-                 WHERE designation_poteau = 'pose poteau RAUV')
+                 WHERE designation_poteau = 'pose poteau reseau')
             ELSE NULL END
         
         UNION ALL
@@ -517,16 +517,7 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION rip_avg_nge.dqe_exe(text, text, text)
-    OWNER TO ownergrp_auvergne;
+GRANT EXECUTE ON FUNCTION ftth.dqe_exe(text, text, text) TO PUBLIC;
 
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text, text) TO ownergrp_auvergne;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text, text) TO sdupays;
-
-COMMENT ON FUNCTION rip_avg_nge.dqe_exe(text, text, text)
+COMMENT ON FUNCTION ftth.dqe_exe(text, text, text)
     IS 'DQE EXE avec filtre blocage_ran. p_blocage: NULL/E=standard, T=travaux (sans blocage), B=blocage uniquement';

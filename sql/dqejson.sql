@@ -18,15 +18,6 @@ CREATE TABLE IF NOT EXISTS dqe.dqejson
 
 TABLESPACE pg_default;
 
-ALTER TABLE IF EXISTS dqe.dqejson
-    OWNER to yadda;
-
-GRANT ALL ON TABLE dqe.dqejson TO auvergne_sch_etudes;
-
-GRANT ALL ON TABLE dqe.dqejson TO ownergrp_auvergne;
-
-GRANT ALL ON TABLE dqe.dqejson TO yadda;
-
 -- Trigger: tr_ajust_sequence
 
 -- DROP TRIGGER IF EXISTS tr_ajust_sequence ON dqe.dqejson;

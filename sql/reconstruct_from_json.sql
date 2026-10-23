@@ -1,6 +1,6 @@
 -- FUNCTION: dqe.dqe_recover(text, text, text, text)
 -- Reconstruit les tables depuis les données archivées dans dqejson.champs
--- Inspiré de rip_avg_nge.recover() - utilise le JSON stocké directement
+-- Inspiré de ftth.recover() - utilise le JSON stocké directement
 -- Formats gérés:
 --   1. dqe_result: [{designation, quantite, unite, ids}, ...] → table sans géométrie
 --   2. FeatureCollection: {features: [{geometry, attributes}]} → table avec géométrie
@@ -259,11 +259,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION dqe.dqe_recover(text, text, text, text)
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION dqe.dqe_recover(text, text, text, text) TO PUBLIC;
 
-GRANT EXECUTE ON FUNCTION dqe.dqe_recover(text, text, text, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION dqe.dqe_recover(text, text, text, text) TO yadda;

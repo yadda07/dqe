@@ -5,7 +5,7 @@ DQE Chargeur Plugin - VERSION CORRIGÉE
 Plugin QGIS corrigé pour charger les DQE PRO, EXE et PGC.
 Principe : Filtrage simple avec gid IN (ids) pour chaque catégorie.
 
-Auteur: DEVTEAM NGE
+Auteur: Entrepreneur d'infrastructure
 """
 
 import os
