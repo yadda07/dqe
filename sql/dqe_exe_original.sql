@@ -1,8 +1,8 @@
--- FUNCTION: rip_avg_nge.dqe_exe(text, text)
+-- FUNCTION: ftth.dqe_exe(text, text)
 
--- DROP FUNCTION IF EXISTS rip_avg_nge.dqe_exe(text, text);
+-- DROP FUNCTION IF EXISTS ftth.dqe_exe(text, text);
 
-CREATE OR REPLACE FUNCTION rip_avg_nge.dqe_exe(
+CREATE OR REPLACE FUNCTION ftth.dqe_exe(
 	p_sro text,
 	p_type text DEFAULT NULL::text)
     RETURNS TABLE("Désignation" text, "Unité" text, "Quantité" numeric, ids text) 
@@ -18,7 +18,7 @@ BEGIN
     -- Récupération des IDs du GC à réaliser depuis la ligne 4 du DQE
     WITH dqe_numbered AS (
         SELECT d.ids as gc_ids, ROW_NUMBER() OVER (ORDER BY 1) as rn
-        FROM rip_avg_nge.dqe2(p_sro, p_type) d
+        FROM ftth.dqe2(p_sro, p_type) d
     )
     SELECT dqe_numbered.gc_ids INTO v_gc_ids
     FROM dqe_numbered 
@@ -40,7 +40,7 @@ BEGIN
                d."Unité" AS uni_pro, 
                d."Quantité" AS qte_pro, 
                d.ids AS ids_pro
-        FROM rip_avg_nge.dqe2(p_sro, p_type) d
+        FROM ftth.dqe2(p_sro, p_type) d
     ),
     
     -- =========================================================================
@@ -51,7 +51,7 @@ BEGIN
             t.gid,
             t.geom, 
             ST_Length(t.geom) as longueur
-        FROM rip_avg_nge.t_cheminement t
+        FROM ftth.t_cheminement t
         WHERE v_gc_ids != '' AND t.gid::text = ANY(string_to_array(v_gc_ids, ','))
     ),
     
@@ -139,14 +139,14 @@ BEGIN
     poteaux_distribution_data AS (
         SELECT
             CASE 
-                WHEN inf_type = 'POT-AC' THEN 'pose poteau RAUV'
+                WHEN inf_type = 'POT-AC' THEN 'pose poteau reseau'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RENFORCER' THEN 'FT à renforcer'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RECALER' THEN 'FT à recaler'
                 WHEN inf_type = 'POT-FT' AND etat = 'A REMPLACER' THEN 'FT à remplacer'
             END AS designation_poteau,
             COUNT(*)::numeric AS quantity,
             string_agg(p.gid::text, ',') AS gids_pot_dist
-        FROM rip_avg_nge.infra_pt_pot p
+        FROM ftth.infra_pt_pot p
         WHERE p.sro = p_sro
         AND (
             (p.inf_type = 'POT-AC') OR
@@ -154,7 +154,7 @@ BEGIN
         )
         GROUP BY 
             CASE 
-                WHEN inf_type = 'POT-AC' THEN 'pose poteau RAUV'
+                WHEN inf_type = 'POT-AC' THEN 'pose poteau reseau'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RENFORCER' THEN 'FT à renforcer'
                 WHEN inf_type = 'POT-FT' AND etat = 'A RECALER' THEN 'FT à recaler'
                 WHEN inf_type = 'POT-FT' AND etat = 'A REMPLACER' THEN 'FT à remplacer'
@@ -384,14 +384,14 @@ BEGIN
         UNION ALL
         
         -- BLOC 9: POTEAUX (lignes 132-135) - UNIQUEMENT POUR DISTRIBUTION
-        SELECT 132 AS ordre, 'pose poteau RAUV', 'U',
+        SELECT 132 AS ordre, 'pose poteau reseau', 'U',
             CASE WHEN p_type IS NULL OR p_type = 'D' THEN
                 COALESCE((SELECT quantity FROM poteaux_distribution_data 
-                         WHERE designation_poteau = 'pose poteau RAUV'), 0)
+                         WHERE designation_poteau = 'pose poteau reseau'), 0)
             ELSE 0 END,
             CASE WHEN p_type IS NULL OR p_type = 'D' THEN
                 (SELECT gids_pot_dist FROM poteaux_distribution_data 
-                 WHERE designation_poteau = 'pose poteau RAUV')
+                 WHERE designation_poteau = 'pose poteau reseau')
             ELSE NULL END
         
         UNION ALL
@@ -468,16 +468,7 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION rip_avg_nge.dqe_exe(text, text)
-    OWNER TO ownergrp_auvergne;
+GRANT EXECUTE ON FUNCTION ftth.dqe_exe(text, text) TO PUBLIC;
 
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text) TO ownergrp_auvergne;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_exe(text, text) TO sdupays;
-
-COMMENT ON FUNCTION rip_avg_nge.dqe_exe(text, text)
+COMMENT ON FUNCTION ftth.dqe_exe(text, text)
     IS 'Fonction complète pour générer le template DQE EXE selon l''ordre exact du template Excel';

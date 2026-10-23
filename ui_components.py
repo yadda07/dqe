@@ -136,7 +136,7 @@ class _SROListWorker(QObject):
     def run(self):
         try:
             if _db_manager and _db_manager.is_connected:
-                query = "SELECT sro FROM rip_avg_nge.za_sro ORDER BY sro LIMIT 1000"
+                query = "SELECT sro FROM ftth.za_sro ORDER BY sro LIMIT 1000"
                 results = _db_manager.execute_query(query)
                 sro_list = [row[0] for row in results if row[0] and str(row[0]).strip()]
                 truncated = len(results) >= 1000

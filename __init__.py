@@ -7,15 +7,15 @@ avec support des fonctionnalités PRO, EXE et PGC.
 
 Architecture modulaire conçue pour la maintenabilité et l'extensibilité.
 
-Auteur: DEVTEAM NGE
+Auteur: Entrepreneur d'infrastructure
 Version: 4.0.0
 Compatibilité: QGIS 3.28+ / 4.0+
 """
 
 # Métadonnées du plugin
 __version__ = "4.0.0"
-__author__ = "DEVTEM NGE"
-__email__ = "yadda@ext.nge.fr"
+__author__ = "Entrepreneur d'infrastructure"
+__email__ = ""
 __license__ = "GPL v3"
 
 def classFactory(iface):

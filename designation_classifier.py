@@ -54,7 +54,7 @@ class DesignationClassifier:
 
         # EXE-specific categories (checked first for priority)
         if operation_type == "EXE":
-            if any(x in dl for x in ["pose poteau", "poteau rauv", "ft à"]):
+            if any(x in dl for x in ["pose poteau", "poteau reseau", "ft à"]):
                 return "Poteaux"
             if any(x in dl for x in [
                 "tranchée", "micro tranchée", "forage dirigé",

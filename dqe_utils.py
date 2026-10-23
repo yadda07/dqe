@@ -2,7 +2,7 @@
 DQE Utils - Version CORRIGÉE
 ==========================================
 
-Auteur: DEVTEAM NGE
+Auteur: Entrepreneur d'infrastructure
 """
 
 import os
@@ -252,18 +252,21 @@ class ConfigurationManager:
     def __init__(self):
         self.logger = SimpleLogger()
     
-    # Criteres de recherche pour la connexion cible
-    TARGET_HOST = "10.241.228.107"
-    TARGET_DATABASE = "AUVERGNE"
-    TARGET_CONNECTION_NAME = "AUVERGNE"
+    # Criteres optionnels pour retrouver une connexion QGIS deja enregistree.
+    # Aucun hote, nom de base ou nom de connexion n'est code en dur.
+    # DQE_DB_HOST + DQE_DB_NAME : filtre hote et base.
+    # DQE_QGIS_CONNECTION : nom exact de la connexion QGIS.
+    TARGET_HOST = os.getenv("DQE_DB_HOST", "")
+    TARGET_DATABASE = os.getenv("DQE_DB_NAME", "")
+    TARGET_CONNECTION_NAME = os.getenv("DQE_QGIS_CONNECTION", "")
     
     def get_db_config(self) -> DatabaseConfig:
-        """Recupere config DB avec recherche ciblee AUVERGNE"""
+        """Recupere la config DB : connexion QGIS, fichier JSON, variables d'environnement, puis dialogue."""
         
         self.logger.debug("Recherche configuration DB")
         
-        # Etape 1: Chercher connexion QGIS avec DB=AUVERGNE + host cible
-        self.logger.debug("Recherche connexion QGIS (DB=AUVERGNE, host=10.241.228.107)")
+        # Etape 1: Connexion QGIS si des criteres d'environnement sont fournis
+        self.logger.debug("Recherche connexion QGIS enregistree")
         try:
             config = self._find_target_qgis_connection()
             if config:
@@ -383,55 +386,66 @@ class ConfigurationManager:
             return None
     
     def _find_target_qgis_connection(self) -> Optional[DatabaseConfig]:
-        """Recherche ciblee: DB=AUVERGNE + host cible, puis nom connexion AUVERGNE + host cible."""
+        """Cherche une connexion QGIS a partir des variables d'environnement.
+
+        Sans DQE_DB_HOST et DQE_DB_NAME, ni DQE_QGIS_CONNECTION, ne selectionne
+        aucune connexion et laisse la main au fichier JSON, aux variables
+        completes, puis au dialogue.
+        """
+        if not ((self.TARGET_DATABASE and self.TARGET_HOST) or self.TARGET_CONNECTION_NAME):
+            self.logger.debug("Pas de critere de connexion QGIS (variables d'environnement vides)")
+            return None
         try:
             settings = QgsSettings()
             settings.beginGroup("PostgreSQL/connections")
             connections = settings.childGroups()
             settings.endGroup()
             
-            self.logger.debug(f"Connexions QGIS disponibles: {connections}")
+            self.logger.debug(f"Connexions QGIS disponibles: {len(connections)}")
             
-            # Passe 1: Chercher par DB=AUVERGNE ET host=10.241.228.107
-            for conn_name in connections:
-                config_data = self._read_qgis_connection(conn_name)
-                if not config_data:
-                    continue
-                db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE
-                host_match = config_data.get('host', '') == self.TARGET_HOST
-                if db_match and host_match:
-                    self.logger.debug(f"Connexion ciblee trouvee: '{conn_name}' (DB={self.TARGET_DATABASE}, host={self.TARGET_HOST})")
+            # Passe 1: base + hote, uniquement si les deux sont configures
+            if self.TARGET_DATABASE and self.TARGET_HOST:
+                for conn_name in connections:
+                    config_data = self._read_qgis_connection(conn_name)
+                    if not config_data:
+                        continue
+                    db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE.upper()
+                    host_match = config_data.get('host', '') == self.TARGET_HOST
+                    if db_match and host_match:
+                        self.logger.debug(f"Connexion ciblee trouvee: '{conn_name}'")
+                        result = self._test_connection(config_data)
+                        if result:
+                            return result
+            
+            # Passe 2: nom de connexion. Le filtre hote s'applique seulement s'il est defini.
+            if self.TARGET_CONNECTION_NAME:
+                for conn_name in connections:
+                    if conn_name.upper() != self.TARGET_CONNECTION_NAME.upper():
+                        continue
+                    config_data = self._read_qgis_connection(conn_name)
+                    if not config_data:
+                        continue
+                    if self.TARGET_HOST and config_data.get('host', '') != self.TARGET_HOST:
+                        continue
+                    self.logger.debug(f"Connexion QGIS trouvee par nom: '{conn_name}'")
                     result = self._test_connection(config_data)
                     if result:
                         return result
             
-            # Passe 2: Chercher par nom AUVERGNE (insensible casse) ET host cible
-            for conn_name in connections:
-                if conn_name.upper() != self.TARGET_CONNECTION_NAME:
-                    continue
-                config_data = self._read_qgis_connection(conn_name)
-                if not config_data:
-                    continue
-                host_match = config_data.get('host', '') == self.TARGET_HOST
-                if host_match:
-                    self.logger.debug(f"Connexion AUVERGNE trouvee: '{conn_name}' (host={self.TARGET_HOST})")
-                    result = self._test_connection(config_data)
-                    if result:
-                        return result
-            
-            # Passe 3: Meme recherche mais accepter sans test reseau
+            # Passe 3: meme filtre base + hote, sans test reseau
             # (le test reseau peut echouer au demarrage: timeout, VPN, etc.)
-            for conn_name in connections:
-                config_data = self._read_qgis_connection(conn_name)
-                if not config_data:
-                    continue
-                db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE
-                host_match = config_data.get('host', '') == self.TARGET_HOST
-                if db_match and host_match:
-                    result = self._test_connection(config_data, skip_network_test=True)
-                    if result:
-                        self.logger.debug(f"Connexion acceptee sans test reseau: '{conn_name}'")
-                        return result
+            if self.TARGET_DATABASE and self.TARGET_HOST:
+                for conn_name in connections:
+                    config_data = self._read_qgis_connection(conn_name)
+                    if not config_data:
+                        continue
+                    db_match = config_data.get('database', '').upper() == self.TARGET_DATABASE.upper()
+                    host_match = config_data.get('host', '') == self.TARGET_HOST
+                    if db_match and host_match:
+                        result = self._test_connection(config_data, skip_network_test=True)
+                        if result:
+                            self.logger.debug(f"Connexion acceptee sans test reseau: '{conn_name}'")
+                            return result
             
             self.logger.debug("Aucune connexion QGIS ciblee trouvee")
             
@@ -518,7 +532,7 @@ class ValidationUtils:
                 return False, f"Format SRO invalide: {sro}"
         
         try:
-            query = "SELECT COUNT(*) FROM rip_avg_nge.za_sro WHERE sro = %s"
+            query = "SELECT COUNT(*) FROM ftth.za_sro WHERE sro = %s"
             result = self.db_manager.execute_query(query, (sro,))
             count = result[0][0] if result else 0
             
@@ -540,7 +554,7 @@ class ValidationUtils:
     def _validate_sro_format(self, sro: str) -> bool:
         """Valide le format SRO sans base de données"""
         patterns = [
-            r'^\d+/[A-Za-z0-9]+/[A-Za-z0-9]+/\d+$',  # 63437/G2B/PMZ/74316
+            r'^\d+/[A-Za-z0-9]+/[A-Za-z0-9]+/\d+$',  # 00000/AAA/PMZ/00001
             r'^\d+/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+$',  # Format alternatif
             r'^[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+$'  # Format général
         ]
@@ -555,10 +569,10 @@ class ValidationUtils:
         """Retourne liste des SRO avec pattern optionnel"""
         try:
             if pattern:
-                query = "SELECT DISTINCT sro FROM rip_avg_nge.za_sro WHERE sro ILIKE %s ORDER BY sro LIMIT 50"
+                query = "SELECT DISTINCT sro FROM ftth.za_sro WHERE sro ILIKE %s ORDER BY sro LIMIT 50"
                 result = self.db_manager.execute_query(query, (f"%{pattern}%",))
             else:
-                query = "SELECT DISTINCT sro FROM rip_avg_nge.za_sro ORDER BY sro LIMIT 100"
+                query = "SELECT DISTINCT sro FROM ftth.za_sro ORDER BY sro LIMIT 100"
                 result = self.db_manager.execute_query(query)
             
             return [row[0] for row in result if row[0]]

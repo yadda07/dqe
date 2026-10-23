@@ -481,12 +481,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION gc_exe.gestionnaire(character varying, character varying)
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION gc_exe.gestionnaire(character varying, character varying) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION gc_exe.gestionnaire(character varying, character varying) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION gc_exe.gestionnaire(character varying, character varying) TO yadda;
 

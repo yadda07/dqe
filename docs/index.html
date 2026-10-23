@@ -201,9 +201,9 @@ pre{background:var(--srf);border-radius:8px;padding:14px 18px;overflow-x:auto;ma
 <!-- ========== INTRO ========== -->
 <section id="top">
 <h1>DQE Chargeur</h1>
-<p class="sub">Plugin QGIS pour la generation automatisee de Devis Quantitatifs Estimatifs.<br>Deploiement fibre optique &mdash; Auvergne Numerique &mdash; DEVTEAM NGE.</p>
+<p class="sub">Plugin QGIS pour la generation automatisee de Devis Quantitatifs Estimatifs.<br>Deploiement fibre optique pour un réseau FTTH régional.</p>
 <p>Quatre modules, un point d'entree. Le plugin interroge PostgreSQL, construit des couches QGIS georeferencees en EPSG:2154, produit les fichiers Excel depuis des templates metier, et archive les resultats en JSONB.</p>
-<div class="info"><strong>Prerequis</strong> &mdash; QGIS 3.28+, PostgreSQL avec schemas <code>rip_avg_nge</code> <code>gc_exe</code> <code>dqe</code>, packages Python psycopg2 pandas openpyxl.</div>
+<div class="info"><strong>Prerequis</strong> &mdash; QGIS 3.28+, PostgreSQL avec schemas <code>ftth</code> <code>gc_exe</code> <code>dqe</code>, packages Python psycopg2 pandas openpyxl.</div>
 
 <h3>Pipeline</h3>
 <div class="dia">
@@ -218,7 +218,7 @@ pre{background:var(--srf);border-radius:8px;padding:14px 18px;overflow-x:auto;ma
   <path d="M204 40 L228 40" class="edge"/>
   <rect x="232" y="16" width="88" height="48" rx="8" class="nd-ac"/>
   <text x="276" y="36" text-anchor="middle" class="lbl" font-size="11">PostgreSQL</text>
-  <text x="276" y="50" text-anchor="middle" class="dim">rip_avg_nge</text>
+  <text x="276" y="50" text-anchor="middle" class="dim">ftth</text>
   <path d="M324 40 L348 40" class="edge"/>
   <rect x="352" y="16" width="72" height="48" rx="8" class="nd"/>
   <text x="388" y="36" text-anchor="middle" class="lbl" font-size="11">Excel</text>
@@ -298,7 +298,7 @@ pre{background:var(--srf);border-radius:8px;padding:14px 18px;overflow-x:auto;ma
 
   <!-- DB -->
   <rect x="0" y="286" width="130" height="50" rx="8" fill="var(--bg3)" stroke="var(--brd)" stroke-width="1"/>
-  <text x="65" y="306" text-anchor="middle" class="lbl" font-size="11">rip_avg_nge</text>
+  <text x="65" y="306" text-anchor="middle" class="lbl" font-size="11">ftth</text>
   <text x="65" y="322" text-anchor="middle" class="dim">dqe2 dqe_exe fddcpi2</text>
 
   <rect x="150" y="286" width="130" height="50" rx="8" fill="var(--bg3)" stroke="var(--brd)" stroke-width="1"/>
@@ -522,7 +522,7 @@ DQE Chargeur/
 <div class="cards">
   <div class="c"><h4>Tranchees</h4><p>Traditionnelle, micro-tranchee, forage dirige, encorbellement.</p></div>
   <div class="c"><h4>Chambres</h4><p>L3C, L3T... Comptage GROUP BY inf_mat.</p></div>
-  <div class="c"><h4>Poteaux RAUV</h4><p>Comptage nb_pot_ac par concessionnaire.</p></div>
+  <div class="c"><h4>Poteaux reseau</h4><p>Comptage nb_pot_ac par concessionnaire.</p></div>
   <div class="c"><h4>Alveoles</h4><p>PVC 42/45, PEHD 33/40. Section dynamique Excel.</p></div>
 </div>
 
@@ -767,7 +767,7 @@ DQE Chargeur/
   <line x1="90" y1="62" x2="90" y2="52" stroke="var(--tx3)" stroke-width="1.5"/>
   <line x1="106" y1="62" x2="106" y2="74" stroke="var(--tx3)" stroke-width="1.5"/>
   <path d="M74 74 Q90 80 106 74" fill="none" stroke="var(--ac)" stroke-width="1.5"/>
-  <text x="90" y="140" text-anchor="middle" font-size="10" fill="var(--ac)" font-weight="500">Poteaux RAUV</text>
+  <text x="90" y="140" text-anchor="middle" font-size="10" fill="var(--ac)" font-weight="500">Poteaux reseau</text>
   <text x="90" y="155" text-anchor="middle" font-size="9" fill="var(--tx3)">nb_pot_ac</text>
 
   <!-- Souterrain -->
@@ -821,7 +821,7 @@ DQE Chargeur/
 <!-- ========== SQL ========== -->
 <section id="sql">
 <h2>Fonctions SQL</h2>
-<h3>rip_avg_nge</h3>
+<h3>ftth</h3>
 <table>
   <thead><tr><th>Fonction</th><th>Module</th><th>Description</th></tr></thead>
   <tbody>
@@ -924,7 +924,7 @@ DQE Chargeur/
 </section>
 
 <div class="F">
-  <p>DQE Chargeur 4.0.0 &middot; DEVTEAM NGE &middot; Auvergne Numerique</p>
+  <p>DQE Chargeur 4.0.0 &middot; réseau FTTH régional</p>
 </div>
 
 </main>

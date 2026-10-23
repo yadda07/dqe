@@ -1,8 +1,8 @@
--- FUNCTION: rip_avg_nge.dqe2(text, text)
+-- FUNCTION: ftth.dqe2(text, text)
 
--- DROP FUNCTION IF EXISTS rip_avg_nge.dqe2(text, text);
+-- DROP FUNCTION IF EXISTS ftth.dqe2(text, text);
 
-CREATE OR REPLACE FUNCTION rip_avg_nge.dqe2(
+CREATE OR REPLACE FUNCTION ftth.dqe2(
 	p_sro text,
 	p_type text DEFAULT NULL::text)
     RETURNS TABLE("Désignation" text, "Unité" text, "Quantité" numeric, ids text) 
@@ -18,13 +18,13 @@ DECLARE
 BEGIN
     IF p_type IS NULL OR p_type = 'T' THEN
         SELECT COUNT(*) > 0 INTO v_transport
-        FROM rip_avg_nge.cables 
+        FROM ftth.cables 
         WHERE projet_tr = p_sro;
     END IF;
     
     IF p_type IS NULL OR p_type = 'D' THEN
         SELECT COUNT(*) > 0 INTO v_distribution
-        FROM rip_avg_nge.cables 
+        FROM ftth.cables 
         WHERE cab_type = 'CDI' and sro = p_sro;
     END IF;
 
@@ -35,7 +35,7 @@ BEGIN
             gid, cab_capa,
             ST_Length(geom) AS longueur,
             geom
-        FROM rip_avg_nge.cables
+        FROM ftth.cables
         WHERE projet_tr = p_sro AND "DCE" ='O'
     ),
     transport_cable_gids AS (
@@ -49,7 +49,7 @@ BEGIN
             SELECT 
                 gid,
                 ST_Length(geom) AS length
-            FROM rip_avg_nge.t_cheminement
+            FROM ftth.t_cheminement
             WHERE (
                 (projet_tr = p_sro AND cm_typelog IN ('TD', 'TR') AND cm_avct = 'C' AND (p_type IS NULL OR p_type = 'T'))
                 OR
@@ -66,7 +66,7 @@ BEGIN
     existing_aerial AS (
         SELECT COALESCE(SUM(ST_Length(geom)), 0) AS length,
                string_agg(gid::text, ',') AS gids
-        FROM rip_avg_nge.t_cheminement
+        FROM ftth.t_cheminement
         WHERE sro ILIKE '%' || p_sro || '%'
         AND cm_typelog IN ('DI')
         AND cm_avct = 'E'
@@ -98,10 +98,10 @@ BEGIN
             COUNT(*) AS quantity,
             string_agg(b.gid::text, ',') AS gids
         FROM 
-            rip_avg_nge.bpe b
+            ftth.bpe b
         LEFT JOIN LATERAL (
             SELECT MAX(c.cab_capa) AS max_cap
-            FROM rip_avg_nge.cables c 
+            FROM ftth.cables c 
             WHERE ST_dwithin(b.geom, c.geom,0.2) AND c.nro IS NOT NULL
         ) c_tr ON true
         WHERE 
@@ -109,7 +109,7 @@ BEGIN
     AND b.noe_type = 'PEP' AND "DCE" = 'O'
     AND NOT EXISTS (
         SELECT 1 
-        FROM rip_avg_nge.cables c 
+        FROM ftth.cables c 
         WHERE ST_Intersects(b.geom, c.geom) 
             AND c.fon = 'Oui'
     )
@@ -161,10 +161,10 @@ BEGIN
             COUNT(DISTINCT b.gid) AS quantity,
             string_agg(DISTINCT b.gid::text, ',') AS gids
         FROM 
-            rip_avg_nge.bpe b
+            ftth.bpe b
         LEFT JOIN LATERAL (
             SELECT MAX(c.cab_capa) AS max_cap
-            FROM rip_avg_nge.cables c 
+            FROM ftth.cables c 
             WHERE st_dwithin(b.geom, c.geom,0.1) AND c.cab_type = 'CDI'
         ) c_dist ON true
         WHERE 
@@ -263,7 +263,7 @@ BEGIN
                 END AS normalized_capa,
                 length AS longueur,
                 gid_dc2
-            FROM rip_avg_nge.fddcpi2(p_sro)
+            FROM ftth.fddcpi2(p_sro)
             WHERE cab_type = 'CDI' AND "DCE" ='O' AND affectation != '3'
         ) AS normalized_cables
         GROUP BY posemode, normalized_capa
@@ -273,10 +273,10 @@ BEGIN
         SELECT 1 AS ordre, 'Nbre de Prises DTR' AS designation, 'prise' AS unite, 
             CASE WHEN p_type = 'T' THEN 0 ELSE 
                 COALESCE((SELECT SUM(CASE WHEN phase = 'DTR' THEN noe_nblr ELSE 0 END) 
-                    FROM rbal.rbal_auvergne WHERE sro ILIKE '%' || p_sro || '%'), 0) 
+                    FROM rbal.premises WHERE sro ILIKE '%' || p_sro || '%'), 0) 
             END AS quantite,
             CASE WHEN p_type = 'T' THEN NULL ELSE
-                (SELECT string_agg(gid::text, ',') FROM rbal.rbal_auvergne 
+                (SELECT string_agg(gid::text, ',') FROM rbal.premises 
                 WHERE sro ILIKE '%' || p_sro || '%' AND phase = 'DTR' LIMIT 1)
             END AS gids
         
@@ -286,10 +286,10 @@ BEGIN
         SELECT 2 AS ordre, 'Nbre de Prises RAD' AS designation, 'prise' AS unite, 
             CASE WHEN p_type = 'T' THEN 0 ELSE 
                 COALESCE((SELECT SUM(CASE WHEN phase IN ('RAD', 'RAD H_DCE') THEN noe_nblr ELSE 0 END) 
-                    FROM rbal.rbal_auvergne WHERE sro ILIKE '%' || p_sro || '%'), 0) 
+                    FROM rbal.premises WHERE sro ILIKE '%' || p_sro || '%'), 0) 
             END AS quantite,
             CASE WHEN p_type = 'T' THEN NULL ELSE
-                (SELECT string_agg(gid::text, ',') FROM rbal.rbal_auvergne 
+                (SELECT string_agg(gid::text, ',') FROM rbal.premises 
                 WHERE sro ILIKE '%' || p_sro || '%' AND phase IN ('RAD', 'RAD_H_DCE') LIMIT 1)
             END AS gids
         
@@ -297,9 +297,9 @@ BEGIN
         -- SRO
         SELECT 3 AS ordre, 'SRO' AS designation, 'U' AS unite, 
             CASE WHEN p_type = 'T' THEN 0 ELSE 
-                COALESCE((SELECT COUNT(DISTINCT sro) FROM rbal.rbal_auvergne WHERE sro ILIKE '%' || p_sro || '%'), 0) 
+                COALESCE((SELECT COUNT(DISTINCT sro) FROM rbal.premises WHERE sro ILIKE '%' || p_sro || '%'), 0) 
             END AS quantite,
-            (SELECT string_agg(gid::text, ',') FROM rip_avg_nge.infra_pt_autres 
+            (SELECT string_agg(gid::text, ',') FROM ftth.infra_pt_autres 
              WHERE inf_mat = 'SRO' AND inf_num = p_sro LIMIT 1) AS gids
         
         UNION ALL
@@ -939,16 +939,7 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION rip_avg_nge.dqe2(text, text)
-    OWNER TO ownergrp_auvergne;
+GRANT EXECUTE ON FUNCTION ftth.dqe2(text, text) TO PUBLIC;
 
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe2(text, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe2(text, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe2(text, text) TO ownergrp_auvergne;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe2(text, text) TO sdupays;
-
-COMMENT ON FUNCTION rip_avg_nge.dqe2(text, text)
+COMMENT ON FUNCTION ftth.dqe2(text, text)
     IS 'Fonction permettant de calculer les quantités et longueurs pour le DQE, avec prise en compte précise du mode de pose (souterrain, aérien, façade, immeuble) grâce à la fonction fddcpi2.';

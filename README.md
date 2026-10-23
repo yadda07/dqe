@@ -1,9 +1,9 @@
 # DQE Chargeur
 
-Génère les DQE (Détail Quantitatif Estimatif) pour Auvergne Numérique.  
+Génère les DQE (Détail Quantitatif Estimatif) pour un réseau FTTH régional.  
 Fait le boulot : requêtes SQL, couches QGIS, exports Excel.
 
-**v4.0.0** | QGIS 3.28+ | NGE
+**v4.0.0** | QGIS 3.28+ | entrepreneur d'infrastructure
 
 ## Structure
 
@@ -73,9 +73,11 @@ Codes : GC, TP, DP, TE, DE, TT, DT, TB, DB
 
 ### Base de donnees
 
-Connexion auto. Fonctions PostgreSQL utilisees :
+Connexion via une connexion QGIS (variables `DQE_DB_HOST`, `DQE_DB_NAME`, `DQE_QGIS_CONNECTION`), un fichier `db_config.json`, les variables `DQE_DB_USER` / `DQE_DB_PASSWORD`, ou le dialogue. Aucun hote ni nom de base n'est code dans le plugin.
 
-#### `rip_avg_nge`
+Fonctions PostgreSQL utilisees :
+
+#### `ftth`
 | Fonction | Role |
 |----------|------|
 | `dqe2(sro, type)` | quantitatifs PRO |
@@ -91,7 +93,7 @@ Connexion auto. Fonctions PostgreSQL utilisees :
 | `redevance_table(sro, troncon)` | calcul redevances |
 | `t_cheminement` | table principale |
 | `infra_pt_chb` | chambres |
-| `infra_pt_pot` | poteaux RAUV |
+| `infra_pt_pot` | poteaux reseau |
 
 `cm_typ_imp` : 0=aerien, 7=souterrain
 
@@ -120,7 +122,7 @@ Connexion auto. Fonctions PostgreSQL utilisees :
 
 Gestion auto selon type infra :
 
-**Aerien** : poteaux RAUV (`nb_pot_ac`), colonnes Poteaux + Longueur
+**Aerien** : poteaux reseau (`nb_pot_ac`), colonnes Poteaux + Longueur
 
 **Souterrain** : alveoles par types (PVC/PEHD), colonnes dynamiques, calcul `nb_alv * long`
 
@@ -157,7 +159,7 @@ Gestion auto selon type infra :
 
 ### 3.2.0
 - Infrastructures mixtes (aérien + souterrain)
-- Redevances poteaux RAUV / alvéoles séparées
+- Redevances poteaux reseau / alvéoles séparées
 - Corrections gc_exe.gestionnaire() et redevance_table()
 
 ### 3.0.0
@@ -181,5 +183,5 @@ Dans `docs/` :
 
 ---
 
-NGE - Auvergne Numerique  
-v3.5.0 | yadda@ext.nge.fr
+Réseau FTTH régional — entrepreneur d'infrastructure  
+v4.0.0
