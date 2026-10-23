@@ -1,8 +1,8 @@
--- FUNCTION: rip_avg_nge.dqe_pgc(text, text)
+-- FUNCTION: ftth.dqe_pgc(text, text)
 
--- DROP FUNCTION IF EXISTS rip_avg_nge.dqe_pgc(text, text);
+-- DROP FUNCTION IF EXISTS ftth.dqe_pgc(text, text);
 
-CREATE OR REPLACE FUNCTION rip_avg_nge.dqe_pgc(
+CREATE OR REPLACE FUNCTION ftth.dqe_pgc(
 	p_sro text,
 	p_troncon text DEFAULT NULL::text)
     RETURNS TABLE("Désignation" text, "Unité" text, "Quantité" numeric, ids text) 
@@ -154,7 +154,7 @@ BEGIN
     -- Données des poteaux (uniquement pour l'aérien, optionnel pour souterrain)
     poteaux_data AS (
         SELECT
-            'pose poteau RAUV' AS designation,
+            'pose poteau reseau' AS designation,
             COUNT(*) AS quantity,
             string_agg(p.gid::text, ',') AS gids
         FROM gc_exe.infra_pt_pot p
@@ -413,8 +413,8 @@ BEGIN
         
         UNION ALL
         
-        -- 27. Poteau RAUV
-        SELECT 27 AS ordre, 'pose poteau RAUV' AS designation, 'U' AS unite,
+        -- 27. Poteau reseau
+        SELECT 27 AS ordre, 'pose poteau reseau' AS designation, 'U' AS unite,
             COALESCE((SELECT SUM(quantity) FROM poteaux_data), 0) AS quantite,
             (SELECT string_agg(gids, ',') FROM poteaux_data LIMIT 1) AS gids
         
@@ -471,16 +471,7 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION rip_avg_nge.dqe_pgc(text, text)
-    OWNER TO ownergrp_auvergne;
+GRANT EXECUTE ON FUNCTION ftth.dqe_pgc(text, text) TO PUBLIC;
 
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_pgc(text, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_pgc(text, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_pgc(text, text) TO ownergrp_auvergne;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.dqe_pgc(text, text) TO sdupays;
-
-COMMENT ON FUNCTION rip_avg_nge.dqe_pgc(text, text)
+COMMENT ON FUNCTION ftth.dqe_pgc(text, text)
     IS 'Fonction DQE PGC (Plan de Génie Civil) ';

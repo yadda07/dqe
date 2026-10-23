@@ -158,7 +158,7 @@ class LayerManager:
         if any(x in designation for x in ["pose de chambre", "chambre l"]):
             print("  -> Table PGC: gc_exe.infra_pt_chb")
             return "gc_exe.infra_pt_chb"
-        elif any(x in designation for x in ["pose poteau", "poteau rauv"]):
+        elif any(x in designation for x in ["pose poteau", "poteau reseau"]):
             print("  -> Table PGC: gc_exe.infra_pt_pot")
             return "gc_exe.infra_pt_pot"
         elif any(x in designation for x in [
@@ -183,30 +183,30 @@ class LayerManager:
         elif any(x in designation for x in ["pose de chambre", "chambre l"]):
             print("  -> Détecté comme GC EXE (chambres)")
             return "gc_exe.infra_pt_chb"
-        elif any(x in designation for x in ["pose poteau", "poteau rauv", "ft à"]):
+        elif any(x in designation for x in ["pose poteau", "poteau reseau", "ft à"]):
             print("  -> Détecté comme EXE (poteaux de distribution)")
-            return "rip_avg_nge.infra_pt_pot"
+            return "ftth.infra_pt_pot"
         elif any(x in designation for x in ["pvc ", "pehd"]):
             print("  -> Détecté comme GC EXE (alvéoles)")
             return "gc_exe.t_cheminement"
         elif any(x in designation for x in ["bpe", "pa ", "pa)", "pbo", "f&p bpe", "f&p pa", "f&p de pbo"]):
             print("  -> Détecté comme BPE/PA/PBO")
-            return "rip_avg_nge.bpe"
+            return "ftth.bpe"
         elif "sro" in designation:
             print("  -> Détecté comme SRO")
-            return "rip_avg_nge.bpe"
+            return "ftth.bpe"
         elif any(x in designation for x in ["cable", "câble", "fibre", "fo ", "fourniture et pose de câble"]):
             print("  -> Détecté comme câble")
-            return "rip_avg_nge.cables"
+            return "ftth.cables"
         elif any(x in designation for x in ["prise", "dtr", "rad", "nbre de prises"]):
             print("  -> Détecté comme Prise")
-            return "rbal.rbal_auvergne"
+            return "rbal.premises"
         elif any(x in designation for x in ["gc", "génie civil", "cheminement", "lineaire", "infra"]):
             print("  -> Détecté comme GC/Cheminement PRO")
-            return "rip_avg_nge.t_cheminement"
+            return "ftth.t_cheminement"
         else:
             print("  -> Type non reconnu, utilisation de cables par défaut")
-            return "rip_avg_nge.cables"
+            return "ftth.cables"
     
     @staticmethod
     def load_layer_direct(designation, ids_str, table_name, sro="", layer_group=None):
@@ -461,7 +461,7 @@ class LayerManager:
             
             _crash_log.step("prepare_distribution_cables_db", "counting cables")
             cursor.execute(
-                "SELECT COUNT(*) FROM rip_avg_nge.fddcpi2(%s) WHERE cab_type = 'CDI'",
+                "SELECT COUNT(*) FROM ftth.fddcpi2(%s) WHERE cab_type = 'CDI'",
                 (sro,)
             )
             count_cables = cursor.fetchone()[0]
@@ -511,7 +511,7 @@ class LayerManager:
                     END AS normalized_capa,
                     %s AS sro_source,
                     NOW() AS date_creation
-                FROM rip_avg_nge.fddcpi2(%s) c
+                FROM ftth.fddcpi2(%s) c
                 WHERE cab_type = 'CDI' AND "DCE" = 'O' AND affectation != '3'
                 """).format(sql.Identifier('temporaire', table_name)),
                 (sro, sro)

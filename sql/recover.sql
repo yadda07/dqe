@@ -1,8 +1,8 @@
--- FUNCTION: rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text)
+-- FUNCTION: ftth.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text)
 
--- DROP FUNCTION IF EXISTS rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text);
+-- DROP FUNCTION IF EXISTS ftth.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text);
 
-CREATE OR REPLACE FUNCTION rip_avg_nge.recover(
+CREATE OR REPLACE FUNCTION ftth.recover(
 	p_schema_name text,
 	p_table_name text,
 	p_operation character varying,
@@ -22,7 +22,7 @@ DECLARE
     limit_clause TEXT := '';
 BEGIN
     CASE p_schema_name
-        WHEN 'rip_avg_nge' THEN audit_table := 'rip_avg_json';
+        WHEN 'ftth' THEN audit_table := 'ftth_json';
         WHEN 'rbal' THEN audit_table := 'rbal_json';
         WHEN 'geofibre' THEN audit_table := 'geofibre_json';
         WHEN 'aerien' THEN audit_table := 'aerien_json';
@@ -78,14 +78,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text)
-    OWNER TO ownergrp_auvergne;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text) TO ownergrp_auvergne;
-
-GRANT EXECUTE ON FUNCTION rip_avg_nge.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text) TO sdupays;
+GRANT EXECUTE ON FUNCTION ftth.recover(text, text, character varying, timestamp without time zone, timestamp without time zone, integer, text) TO PUBLIC;
 

@@ -183,12 +183,4 @@ BEGIN
 END 
 $BODY$;
 
-ALTER FUNCTION gc_exe.redevance_table(text, text)
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION gc_exe.redevance_table(text, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION gc_exe.redevance_table(text, text) TO auvergne_sch_etudes;
-ès 
-GRANT EXECUTE ON FUNCTION gc_exe.redevance_table(text, text) TO yadda;
-

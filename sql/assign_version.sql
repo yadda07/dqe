@@ -28,12 +28,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION dqe.assign_version()
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION dqe.assign_version() TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION dqe.assign_version() TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION dqe.assign_version() TO yadda;
 

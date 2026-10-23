@@ -2,17 +2,17 @@
 name=DQE Chargeur
 qgisMinimumVersion=3.28.0
 qgisMaximumVersion=4.99
-description=Plugin de génération de DQE (Détail Quantitatif Estimatif) pour le projet de Auvergne Numérique
-long_description=Ce plugin permet la génération automatique de DQE pour le projet de Auvergne Numérique à partir d'un code SRO. Il supporte trois modes : DQE PRO (quantitatifs projet), DQE EXE (quantitatifs exécution avec génie civil), et DQE PGC (attribution gestionnaire avec corrections manuelles). Génération automatique d'Excel avec templates spécialisés et chargement des couches QGIS organisées.
+description=Plugin de génération de DQE (Détail Quantitatif Estimatif) pour un réseau FTTH régional
+long_description=Ce plugin permet la génération automatique de DQE pour un réseau FTTH régional à partir d'un code SRO. Il supporte trois modes : DQE PRO (quantitatifs projet), DQE EXE (quantitatifs exécution avec génie civil), et DQE PGC (attribution gestionnaire avec corrections manuelles). Génération automatique d'Excel avec templates spécialisés et chargement des couches QGIS organisées.
 
 version=4.0.0
-author=DEVTEM NGE
-email=yadda@nge-es.com
+author=Entrepreneur d'infrastructure
+email=
 
-about=Plugin développé pour automatiser la génération de DQE dans le cadre de projet de Auvergne Numérique. Interface intuitive avec validation automatique des codes SRO et gestion intelligente des templates Excel.
+about=Plugin développé pour automatiser la génération de DQE sur un réseau FTTH régional. Interface intuitive avec validation automatique des codes SRO et gestion intelligente des templates Excel.
 
 category=Database
-tags=DQE,Auvergne Numérique,quantitatif,excel,database,infrastructure
+tags=DQE,FTTH,quantitatif,excel,database,infrastructure
 
 homepage=
 tracker=
@@ -29,7 +29,7 @@ changelog=4.0.0 - Montee de version majeure
     * QVariant gere via qgis.PyQt avec fallback types Python
     * Constantes Qgis.MessageLevel dans compat.py (scope Qt5/Qt6)
     * Detection automatique version Qt/QGIS au demarrage (log console)
-    * Correction bug connexion AUVERGNE (Passe 3 sans test reseau)
+    * Correction bug connexion base (Passe 3 sans test reseau)
     * connect_timeout augmente de 5s a 10s
     * Check dependances : qgis.PyQt au lieu de PyQt5
     * Imports inutilises nettoyes dans dqe_chargeur_dialog.py
@@ -65,7 +65,7 @@ changelog=4.0.0 - Montee de version majeure
     • Correction comptage chambres L3C/L3T (GROUP BY inf_mat)
     3.2.0 - Corrections majeures fonctions PostgreSQL + Python pour DQE PGC
     • Gestion complète infrastructures mixtes (aérien + souterrain)
-    • Calcul redevances avec poteaux RAUV et alvéoles séparés
+    • Calcul redevances avec poteaux reseau et alvéoles séparés
     • Support nb_pot_ac pour infrastructures aériennes
     • Évitement mélange unités (poteaux/mètres linéaires) dans totaux Excel
     • Corrections fonctions gc_exe.gestionnaire() et gc_exe.redevance_table()

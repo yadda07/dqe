@@ -22,12 +22,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION dqe.adjust_sequence()
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION dqe.adjust_sequence() TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION dqe.adjust_sequence() TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION dqe.adjust_sequence() TO yadda;
 

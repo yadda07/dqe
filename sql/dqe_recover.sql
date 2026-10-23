@@ -191,12 +191,5 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION dqe.dqe_recover(text, text, text, text)
-    OWNER TO yadda;
-
 GRANT EXECUTE ON FUNCTION dqe.dqe_recover(text, text, text, text) TO PUBLIC;
-
-GRANT EXECUTE ON FUNCTION dqe.dqe_recover(text, text, text, text) TO auvergne_sch_etudes;
-
-GRANT EXECUTE ON FUNCTION dqe.dqe_recover(text, text, text, text) TO yadda;
 
