@@ -167,10 +167,7 @@ Gestion auto selon type infra :
 
 ## Docs
 
-Dans `docs/` :
-- `DQE_PRO.md` / `DQE_EXE.md` / `DQE_PGC.md`
-- `BLOCAGE_RAN_ARCHITECTURE.md` - modes RAN
-- `AUDIT_COMPLET.md` - audit technique
+Documentation interactive locale : `docs/index.html`.
 
 ## Deps
 
@@ -183,5 +180,5 @@ Dans `docs/` :
 
 ---
 
-Réseau FTTH régional — entrepreneur d'infrastructure  
+Réseau FTTH régional - entrepreneur d'infrastructure  
 v4.0.0
